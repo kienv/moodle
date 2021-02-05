@@ -635,7 +635,7 @@ FloatingHeaders.prototype = {
 
         // Generate the new fields.
         userColumn.each(function(node) {
-            var height = node.getComputedStyle(HEIGHT);
+            var height = node.ancestor('tr').getComputedStyle(HEIGHT);
             // Nasty hack to account for Internet Explorer
             if (Y.UA.ie !== 0) {
                 var allHeight = node.get('offsetHeight');
@@ -1102,8 +1102,16 @@ FloatingHeaders.prototype = {
         var userWidth = this.firstUserCell.getComputedStyle(WIDTH);
         var userCells = Y.all(SELECTORS.USERCELL);
         this.userColumnHeader.one('.cell').setStyle('width', userWidth);
+        // Recalculate the user floating column position when zoom/resize
+        var coordinates = this._getRelativeXY(this.firstUserCell);
+        this.userColumn.setStyles({
+            left:       coordinates[0] + 'px',
+            position:   'absolute',
+            top:        coordinates[1] + 'px'
+        });
+
         this.userColumn.all('.cell').each(function(cell, idx) {
-            var height = userCells.item(idx).getComputedStyle(HEIGHT);
+            var height = userCells.item(idx).ancestor('tr').getComputedStyle(HEIGHT);
             // Nasty hack to account for Internet Explorer
             if (Y.UA.ie !== 0) {
                 var node = userCells.item(idx);
