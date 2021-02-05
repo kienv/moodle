@@ -30,39 +30,26 @@ defined('MOODLE_INTERNAL') || die();
  * @return bool result
  */
 function xmldb_auth_cas_upgrade($oldversion) {
-    global $CFG, $DB;
+    global $CFG;
 
-    // Moodle v2.8.0 release upgrade line.
+    // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
-    if ($oldversion < 2014111001) {
-        // From now on the default LDAP objectClass setting for AD has been changed, from 'user' to '(samaccounttype=805306368)'.
-        if (is_enabled_auth('cas')
-                && ($DB->get_field('config_plugins', 'value', array('name' => 'user_type', 'plugin' => 'auth/cas')) === 'ad')
-                && ($DB->get_field('config_plugins', 'value', array('name' => 'objectclass', 'plugin' => 'auth/cas')) === '')) {
-            // Save the backwards-compatible default setting.
-            set_config('objectclass', 'user', 'auth/cas');
-        }
-
-        upgrade_plugin_savepoint(true, 2014111001, 'auth', 'cas');
-    }
-
-    // Moodle v2.9.0 release upgrade line.
+    // Automatically generated Moodle v3.7.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.0.0 release upgrade line.
+    // Automatically generated Moodle v3.8.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.1.0 release upgrade line.
+    // Automatically generated Moodle v3.9.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Automatically generated Moodle v3.2.0 release upgrade line.
-    // Put any upgrade step following this.
+    if ($oldversion < 2021052501) {
+        // Normalize the memberattribute_isdn plugin config.
+        set_config('memberattribute_isdn',
+            !empty(get_config('auth_cas', 'memberattribute_isdn')), 'auth_cas');
 
-    if ($oldversion < 2017020700) {
-        // Convert info in config plugins from auth/cas to auth_cas.
-        $DB->set_field('config_plugins', 'plugin', 'auth_cas', array('plugin' => 'auth/cas'));
-        upgrade_plugin_savepoint(true, 2017020700, 'auth', 'cas');
+        upgrade_plugin_savepoint(true, 2021052501, 'auth', 'cas');
     }
 
     return true;

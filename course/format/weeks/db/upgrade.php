@@ -33,15 +33,17 @@ defined('MOODLE_INTERNAL') || die();
 function xmldb_format_weeks_upgrade($oldversion) {
     global $CFG, $DB;
 
-    require_once($CFG->dirroot . '/course/format/weeks/db/upgradelib.php');
+    // Automatically generated Moodle v3.6.0 release upgrade line.
+    // Put any upgrade step following this.
 
-    if ($oldversion < 2017020200) {
+    // Automatically generated Moodle v3.7.0 release upgrade line.
+    // Put any upgrade step following this.
 
-        // Remove 'numsections' option and hide or delete orphaned sections.
-        format_weeks_upgrade_remove_numsections();
+    // Automatically generated Moodle v3.8.0 release upgrade line.
+    // Put any upgrade step following this.
 
-        upgrade_plugin_savepoint(true, 2017020200, 'format', 'weeks');
-    }
+    // Automatically generated Moodle v3.9.0 release upgrade line.
+    // Put any upgrade step following this.
 
     return true;
 }

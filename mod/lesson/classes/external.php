@@ -143,7 +143,9 @@ class mod_lesson_external extends external_api {
                 $lessonrecord = self::get_lesson_summary_for_exporter($lessonrecord);
 
                 $exporter = new lesson_summary_exporter($lessonrecord, array('context' => $context));
-                $returnedlessons[] = $exporter->export($PAGE->get_renderer('core'));
+                $lesson = $exporter->export($PAGE->get_renderer('core'));
+                $lesson->name = external_format_string($lesson->name, $context);
+                $returnedlessons[] = $lesson;
             }
         }
         $result = array();
@@ -993,8 +995,10 @@ class mod_lesson_external extends external_api {
         if ($returncontents || $canmanage || (lesson_displayleftif($lesson) && $page->displayinmenublock && $page->display)) {
             $pagedata->title = external_format_string($page->title, $context->id);
 
+            $options = array('noclean' => true);
             list($pagedata->contents, $pagedata->contentsformat) =
-                external_format_text($page->contents, $page->contentsformat, $context->id, 'mod_lesson', 'page_contents', $page->id);
+                external_format_text($page->contents, $page->contentsformat, $context->id, 'mod_lesson', 'page_contents', $page->id,
+                    $options);
 
         }
         return $pagedata;
@@ -1309,10 +1313,13 @@ class mod_lesson_external extends external_api {
                             $answer[$prop] = $a->{$prop};
                         }
 
+                        $options = array('noclean' => true);
                         list($answer['answer'], $answer['answerformat']) =
-                            external_format_text($a->answer, $a->answerformat, $context->id, 'mod_lesson', 'page_answers', $a->id);
+                            external_format_text($a->answer, $a->answerformat, $context->id, 'mod_lesson', 'page_answers', $a->id,
+                                $options);
                         list($answer['response'], $answer['responseformat']) =
-                            external_format_text($a->response, $a->responseformat, $context->id, 'mod_lesson', 'page_responses', $a->id);
+                            external_format_text($a->response, $a->responseformat, $context->id, 'mod_lesson', 'page_responses',
+                                $a->id, $options);
                     }
                     $answers[] = $answer;
                 }
@@ -1681,7 +1688,7 @@ class mod_lesson_external extends external_api {
 
         $params = array('lessonid' => $lessonid, 'groupid' => $groupid);
         $params = self::validate_parameters(self::get_attempts_overview_parameters(), $params);
-        $studentsdata = $warnings = array();
+        $warnings = array();
 
         list($lesson, $course, $cm, $context, $lessonrecord) = self::validate_lesson($params['lessonid']);
         require_capability('mod/lesson:viewreports', $context);
@@ -1705,15 +1712,15 @@ class mod_lesson_external extends external_api {
             }
         }
 
-        list($table, $data) = lesson_get_overview_report_table_and_data($lesson, $groupid);
-        if ($data !== false) {
-            $studentsdata = $data;
-        }
-
         $result = array(
-            'data' => $studentsdata,
             'warnings' => $warnings
         );
+
+        list($table, $data) = lesson_get_overview_report_table_and_data($lesson, $groupid);
+        if ($data !== false) {
+            $result['data'] = $data;
+        }
+
         return $result;
     }
 
@@ -1756,7 +1763,8 @@ class mod_lesson_external extends external_api {
                                 )
                             ), 'Students data, including attempts.', VALUE_OPTIONAL
                         ),
-                    )
+                    ),
+                    'Attempts overview data (empty for no attemps).', VALUE_OPTIONAL
                 ),
                 'warnings' => new external_warnings(),
             )
@@ -1813,6 +1821,10 @@ class mod_lesson_external extends external_api {
         }
 
         list($answerpages, $userstats) = lesson_get_user_detailed_report_data($lesson, $userid, $params['lessonattempt']);
+        // Convert page object to page record.
+        foreach ($answerpages as $answerp) {
+            $answerp->page = self::get_page_fields($answerp->page);
+        }
 
         $result = array(
             'answerpages' => $answerpages,
@@ -1834,6 +1846,7 @@ class mod_lesson_external extends external_api {
                 'answerpages' => new external_multiple_structure(
                     new external_single_structure(
                         array(
+                            'page' => self::get_page_structure(VALUE_OPTIONAL),
                             'title' => new external_value(PARAM_RAW, 'Page title.'),
                             'contents' => new external_value(PARAM_RAW, 'Page contents.'),
                             'qtype' => new external_value(PARAM_TEXT, 'Identifies the page type of this page.'),

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace GeoIp2\Record;
 
 abstract class AbstractPlaceRecord extends AbstractRecord
@@ -9,7 +11,7 @@ abstract class AbstractPlaceRecord extends AbstractRecord
     /**
      * @ignore
      */
-    public function __construct($record, $locales = array('en'))
+    public function __construct(?array $record, array $locales = ['en'])
     {
         $this->locales = $locales;
         parent::__construct($record);
@@ -18,21 +20,42 @@ abstract class AbstractPlaceRecord extends AbstractRecord
     /**
      * @ignore
      */
-    public function __get($attr)
+    public function __get(string $attr)
     {
-        if ($attr == 'name') {
+        if ($attr === 'name') {
             return $this->name();
-        } else {
-            return parent::__get($attr);
         }
+
+        return parent::__get($attr);
     }
 
-    private function name()
+    /**
+     * @ignore
+     */
+    public function __isset(string $attr): bool
+    {
+        if ($attr === 'name') {
+            return $this->firstSetNameLocale() !== null;
+        }
+
+        return parent::__isset($attr);
+    }
+
+    private function name(): ?string
+    {
+        $locale = $this->firstSetNameLocale();
+
+        return $locale === null ? null : $this->names[$locale];
+    }
+
+    private function firstSetNameLocale(): ?string
     {
         foreach ($this->locales as $locale) {
             if (isset($this->names[$locale])) {
-                return $this->names[$locale];
+                return $locale;
             }
         }
+
+        return null;
     }
 }

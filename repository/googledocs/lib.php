@@ -97,7 +97,7 @@ class repository_googledocs extends repository {
             $returnurl->param('sesskey', sesskey());
         }
 
-        $this->client = \core\oauth2\api::get_user_oauth_client($this->issuer, $returnurl, self::SCOPES);
+        $this->client = \core\oauth2\api::get_user_oauth_client($this->issuer, $returnurl, self::SCOPES, true);
 
         return $this->client;
     }
@@ -129,6 +129,33 @@ class repository_googledocs extends repository {
         } else {
             echo '<a target="_blank" href="'.$url->out(false).'">'.get_string('login', 'repository').'</a>';
         }
+    }
+
+    /**
+     * Print the login in a popup.
+     *
+     * @param array|null $attr Custom attributes to be applied to popup div.
+     */
+    public function print_login_popup($attr = null) {
+        global $OUTPUT, $PAGE;
+
+        $client = $this->get_user_oauth_client(false);
+        $url = new moodle_url($client->get_login_url());
+        $state = $url->get_param('state') . '&reloadparent=true';
+        $url->param('state', $state);
+
+        $PAGE->set_pagelayout('embedded');
+        echo $OUTPUT->header();
+
+        $repositoryname = get_string('pluginname', 'repository_googledocs');
+
+        $button = new single_button($url, get_string('logintoaccount', 'repository', $repositoryname), 'post', true);
+        $button->add_action(new popup_action('click', $url, 'Login'));
+        $button->class = 'mdl-align';
+        $button = $OUTPUT->render($button);
+        echo html_writer::div($button, '', $attr);
+
+        echo $OUTPUT->footer();
     }
 
     /**
@@ -432,10 +459,16 @@ class repository_googledocs extends repository {
             throw new repository_exception('cannotdownload', 'repository');
         }
 
-        $client = $this->get_user_oauth_client();
-        $base = 'https://www.googleapis.com/drive/v3';
-
         $source = json_decode($reference);
+
+        $client = null;
+        if (!empty($source->usesystem)) {
+            $client = \core\oauth2\api::get_system_oauth_client($this->issuer);
+        } else {
+            $client = $this->get_user_oauth_client();
+        }
+
+        $base = 'https://www.googleapis.com/drive/v3';
 
         $newfilename = false;
         if ($source->exportformat == 'download') {
@@ -588,7 +621,7 @@ class repository_googledocs extends repository {
                                    $storedfile->get_filepath(),
                                    $storedfile->get_filename());
 
-        if (empty($options['offline']) && !empty($info) && $info->is_writable()) {
+        if (empty($options['offline']) && !empty($info) && $info->is_writable() && !empty($source->usesystem)) {
             // Add the current user as an OAuth writer.
             $systemauth = \core\oauth2\api::get_system_oauth_client($this->issuer);
 
@@ -607,8 +640,15 @@ class repository_googledocs extends repository {
                                                    $storedfile->get_filename(),
                                                    $forcedownload);
             $url->param('sesskey', sesskey());
-            $userauth = $this->get_user_oauth_client($url);
+            $param = ($options['embed'] == true) ? false : $url;
+            $userauth = $this->get_user_oauth_client($param);
             if (!$userauth->is_logged_in()) {
+                if ($options['embed'] == true) {
+                    // Due to Same-origin policy, we cannot redirect to googledocs login page.
+                    // If the requested file is embed and the user is not logged in, add option to log in using a popup.
+                    $this->print_login_popup(['style' => 'margin-top: 250px']);
+                    exit;
+                }
                 redirect($userauth->get_login_url());
             }
             if ($userauth === false) {
@@ -630,7 +670,8 @@ class repository_googledocs extends repository {
             }
             send_file($downloaded['path'], $filename, $lifetime, $filter, false, $forcedownload, '', false, $options);
         } else if ($source->link) {
-            redirect($source->link);
+            // Do not use redirect() here because is not compatible with webservice/pluginfile.php.
+            header('Location: ' . $source->link);
         } else {
             $details = 'File is missing source link';
             throw new repository_exception('errorwhilecommunicatingwith', 'repository', '', $details);
@@ -860,11 +901,19 @@ class repository_googledocs extends repository {
      * @return string updated reference (final one before it's saved to db).
      */
     public function reference_file_selected($reference, $context, $component, $filearea, $itemid) {
+        global $CFG, $SITE;
+
         // What we need to do here is transfer ownership to the system user (or copy)
         // then set the permissions so anyone with the share link can view,
         // finally update the reference to contain the share link if it was not
         // already there (and point to new file id if we copied).
 
+        // Get the details from the reference.
+        $source = json_decode($reference);
+        if (!empty($source->usesystem)) {
+            // If we already copied this file to the system account - we are done.
+            return $reference;
+        }
 
         // Check this issuer is enabled.
         if ($this->disabled) {
@@ -888,8 +937,6 @@ class repository_googledocs extends repository {
             throw new repository_exception('errorwhilecommunicatingwith', 'repository', '', $details);
         }
 
-        // Get the details from the reference.
-        $source = json_decode($reference);
         $userservice = new repository_googledocs\rest($userauth);
         $systemservice = new repository_googledocs\rest($systemauth);
 
@@ -904,8 +951,23 @@ class repository_googledocs extends repository {
         $fullpath = 'root';
         $allfolders = [];
         foreach ($contextlist as $context) {
-            // Make sure a folder exists here.
-            $foldername = clean_param($context->get_context_name(), PARAM_PATH);
+            // Prepare human readable context folders names, making sure they are still unique within the site.
+            $prevlang = force_current_language($CFG->lang);
+            $foldername = $context->get_context_name();
+            force_current_language($prevlang);
+
+            if ($context->contextlevel == CONTEXT_SYSTEM) {
+                // Append the site short name to the root folder.
+                $foldername .= ' ('.$SITE->shortname.')';
+                // Append the relevant object id.
+            } else if ($context->instanceid) {
+                $foldername .= ' (id '.$context->instanceid.')';
+            } else {
+                // This does not really happen but just in case.
+                $foldername .= ' (ctx '.$context->id.')';
+            }
+
+            $foldername = clean_param($foldername, PARAM_PATH);
             $allfolders[] = $foldername;
         }
 
@@ -945,6 +1007,7 @@ class repository_googledocs extends repository {
         // Update the returned reference so that the stored_file in moodle points to the newly copied file.
         $source->id = $newsource->id;
         $source->link = isset($newsource->webViewLink) ? $newsource->webViewLink : '';
+        $source->usesystem = true;
         if (empty($source->link)) {
             $source->link = isset($newsource->webContentLink) ? $newsource->webContentLink : '';
         }
@@ -967,6 +1030,9 @@ class repository_googledocs extends repository {
             return get_string('unknownsource', 'repository');
         }
         $source = json_decode($reference);
+        if (empty($source->usesystem)) {
+            return '';
+        }
         $systemauth = \core\oauth2\api::get_system_oauth_client($this->issuer);
 
         if ($systemauth === false) {

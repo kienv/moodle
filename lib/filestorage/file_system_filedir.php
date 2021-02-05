@@ -109,7 +109,7 @@ class file_system_filedir extends file_system {
      * @return string The full path to the content file
      */
     protected function get_local_path_from_hash($contenthash, $fetchifnotfound = false) {
-        return $this->get_fulldir_from_hash($contenthash) . DIRECTORY_SEPARATOR . $contenthash;
+        return $this->get_fulldir_from_hash($contenthash) . '/' .$contenthash;
     }
 
     /**
@@ -119,7 +119,7 @@ class file_system_filedir extends file_system {
      * @param bool $fetchifnotfound Whether to attempt to fetch from the remote path if not found.
      * @return string The full path to the content file
      */
-    protected function get_local_path_from_storedfile(stored_file $file, $fetchifnotfound = false) {
+    public function get_local_path_from_storedfile(stored_file $file, $fetchifnotfound = false) {
         $filepath = $this->get_local_path_from_hash($file->get_contenthash(), $fetchifnotfound);
 
         // Try content recovery.
@@ -136,7 +136,7 @@ class file_system_filedir extends file_system {
      * @param stored_file $file The file to serve.
      * @return string full path to pool file with file content
      */
-    protected function get_remote_path_from_storedfile(stored_file $file) {
+    public function get_remote_path_from_storedfile(stored_file $file) {
         return $this->get_local_path_from_storedfile($file, false);
     }
 
@@ -171,7 +171,7 @@ class file_system_filedir extends file_system {
      * @return string The full path to the content directory
      */
     protected function get_fulldir_from_hash($contenthash) {
-        return $this->filedir . DIRECTORY_SEPARATOR . $this->get_contentdir_from_hash($contenthash);
+        return $this->filedir . '/' . $this->get_contentdir_from_hash($contenthash);
     }
 
     /**
@@ -198,7 +198,7 @@ class file_system_filedir extends file_system {
      * @return string The filepath within filedir
      */
     protected function get_contentpath_from_hash($contenthash) {
-        return $this->get_contentdir_from_hash($contenthash) . "/$contenthash";
+        return $this->get_contentdir_from_hash($contenthash) . '/' . $contenthash;
     }
 
     /**
@@ -209,7 +209,7 @@ class file_system_filedir extends file_system {
      * @return string The full path to the trash directory
      */
     protected function get_trash_fulldir_from_hash($contenthash) {
-        return $this->trashdir . DIRECTORY_SEPARATOR . $this->get_contentdir_from_hash($contenthash);
+        return $this->trashdir . '/' . $this->get_contentdir_from_hash($contenthash);
     }
 
     /**
@@ -219,7 +219,7 @@ class file_system_filedir extends file_system {
      * @return string The full path to the trash file
      */
     protected function get_trash_fullpath_from_hash($contenthash) {
-        return $this->trashdir . DIRECTORY_SEPARATOR . $this->get_contentpath_from_hash($contenthash);
+        return $this->trashdir . '/' . $this->get_contentpath_from_hash($contenthash);
     }
 
     /**
@@ -251,7 +251,7 @@ class file_system_filedir extends file_system {
         $contenthash = $file->get_contenthash();
         $contentdir = $this->get_fulldir_from_storedfile($file);
         $trashfile = $this->get_trash_fullpath_from_hash($contenthash);
-        $alttrashfile = $this->trashdir . DIRECTORY_SEPARATOR . $contenthash;
+        $alttrashfile = "{$this->trashdir}/{$contenthash}";
 
         if (!is_readable($trashfile)) {
             // The trash file was not found. Check the alternative trash file too just in case.
@@ -344,48 +344,8 @@ class file_system_filedir extends file_system {
      * @return array (contenthash, filesize, newfile)
      */
     public function add_file_from_path($pathname, $contenthash = null) {
-        global $CFG;
 
-        if (!is_readable($pathname)) {
-            throw new file_exception('storedfilecannotread', '', $pathname);
-        }
-
-        $filesize = filesize($pathname);
-        if ($filesize === false) {
-            throw new file_exception('storedfilecannotread', '', $pathname);
-        }
-
-        if (is_null($contenthash)) {
-            $contenthash = file_storage::hash_from_path($pathname);
-        } else if ($CFG->debugdeveloper) {
-            $filehash = file_storage::hash_from_path($pathname);
-            if ($filehash === false) {
-                throw new file_exception('storedfilecannotread', '', $pathname);
-            }
-            if ($filehash !== $contenthash) {
-                // Hopefully this never happens, if yes we need to fix calling code.
-                debugging("Invalid contenthash submitted for file $pathname", DEBUG_DEVELOPER);
-                $contenthash = $filehash;
-            }
-        }
-        if ($contenthash === false) {
-            throw new file_exception('storedfilecannotread', '', $pathname);
-        }
-
-        if ($filesize > 0 and $contenthash === file_storage::hash_from_string('')) {
-            // Did the file change or is file_storage::hash_from_path() borked for this file?
-            clearstatcache();
-            $contenthash = file_storage::hash_from_path($pathname);
-            $filesize = filesize($pathname);
-
-            if ($contenthash === false or $filesize === false) {
-                throw new file_exception('storedfilecannotread', '', $pathname);
-            }
-            if ($filesize > 0 and $contenthash === file_storage::hash_from_string('')) {
-                // This is very weird...
-                throw new file_exception('storedfilecannotread', '', $pathname);
-            }
-        }
+        list($contenthash, $filesize) = $this->validate_hash_and_file_size($contenthash, $pathname);
 
         $hashpath = $this->get_fulldir_from_hash($contenthash);
         $hashfile = $this->get_local_path_from_hash($contenthash, false);

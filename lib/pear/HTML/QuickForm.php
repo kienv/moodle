@@ -21,6 +21,10 @@
 
 require_once('PEAR.php');
 require_once('HTML/Common.php');
+/**
+ * Static utility methods.
+ */
+require_once('HTML/QuickForm/utils.php');
 
 $GLOBALS['HTML_QUICKFORM_ELEMENT_TYPES'] =
         array(
@@ -262,21 +266,8 @@ class HTML_QuickForm extends HTML_Common {
         $attributes = array('action'=>$action, 'method'=>$method, 'name'=>$formName, 'id'=>$formName) + $target;
         $this->updateAttributes($attributes);
         if (!$trackSubmit || isset($_REQUEST['_qf__' . $formName])) {
-            if (1 == get_magic_quotes_gpc()) {
-                $this->_submitValues = ('get' == $method? $_GET: $_POST); // we already eliminated magic quotes in moodle setup.php
-                foreach ($_FILES as $keyFirst => $valFirst) {
-                    foreach ($valFirst as $keySecond => $valSecond) {
-                        if ('name' == $keySecond) {
-                            $this->_submitFiles[$keyFirst][$keySecond] = $valSecond; // we already eliminated magic quotes in moodle setup.php
-                        } else {
-                            $this->_submitFiles[$keyFirst][$keySecond] = $valSecond;
-                        }
-                    }
-                }
-            } else {
-                $this->_submitValues = 'get' == $method? $_GET: $_POST;
-                $this->_submitFiles  = $_FILES;
-            }
+            $this->_submitValues = 'get' == $method? $_GET: $_POST;
+            $this->_submitFiles  = $_FILES;
             $this->_flagSubmitted = count($this->_submitValues) > 0 || count($this->_submitFiles) > 0;
         }
         if ($trackSubmit) {
@@ -834,9 +825,15 @@ class HTML_QuickForm extends HTML_Common {
 
         } elseif (false !== ($pos = strpos($elementName, '['))) {
             $base = substr($elementName, 0, $pos);
-            $idx  = "['" . str_replace(array(']', '['), array('', "']['"), substr($elementName, $pos + 1, -1)) . "']";
+            $keys = str_replace(
+                array('\\', '\'', ']', '['), array('\\\\', '\\\'', '', "']['"),
+                substr($elementName, $pos + 1, -1)
+            );
+            $idx  = "['" . $keys . "']";
+            $keyArray = explode("']['", $keys);
+
             if (isset($this->_submitValues[$base])) {
-                $value = eval("return (isset(\$this->_submitValues['{$base}']{$idx})) ? \$this->_submitValues['{$base}']{$idx} : null;");
+                $value = HTML_QuickForm_utils::recursiveValue($this->_submitValues[$base], $keyArray, NULL);
             }
 
             if ((is_array($value) || null === $value) && isset($this->_submitFiles[$base])) {

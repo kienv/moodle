@@ -125,7 +125,8 @@ abstract class quiz_attempts_report extends quiz_default_report {
             return array($currentgroup, $empty, $empty, $empty);
         }
 
-        $studentsjoins = get_enrolled_with_capabilities_join($this->context);
+        $studentsjoins = get_enrolled_with_capabilities_join($this->context, '',
+                array('mod/quiz:attempt', 'mod/quiz:reviewmyattempts'));
 
         if (empty($currentgroup)) {
             return array($currentgroup, $studentsjoins, $empty, $studentsjoins);
@@ -136,6 +137,48 @@ abstract class quiz_attempts_report extends quiz_default_report {
                 array('mod/quiz:attempt', 'mod/quiz:reviewmyattempts'), $currentgroup);
 
         return array($currentgroup, $studentsjoins, $groupstudentsjoins, $groupstudentsjoins);
+    }
+
+    /**
+     * Outputs the things you commonly want at the top of a quiz report.
+     *
+     * Calls through to {@link print_header_and_tabs()} and then
+     * outputs the standard group selector, number of attempts summary,
+     * and messages to cover common cases when the report can't be shown.
+     *
+     * @param stdClass $cm the course_module information.
+     * @param stdClass $course the course settings.
+     * @param stdClass $quiz the quiz settings.
+     * @param mod_quiz_attempts_report_options $options the current report settings.
+     * @param int $currentgroup the current group.
+     * @param bool $hasquestions whether there are any questions in the quiz.
+     * @param bool $hasstudents whether there are any relevant students.
+     */
+    protected function print_standard_header_and_messages($cm, $course, $quiz,
+            $options, $currentgroup, $hasquestions, $hasstudents) {
+        global $OUTPUT;
+
+        $this->print_header_and_tabs($cm, $course, $quiz, $this->mode);
+
+        if (groups_get_activity_groupmode($cm)) {
+            // Groups are being used, so output the group selector if we are not downloading.
+            groups_print_activity_menu($cm, $options->get_url());
+        }
+
+        // Print information on the number of existing attempts.
+        if ($strattemptnum = quiz_num_attempt_summary($quiz, $cm, true, $currentgroup)) {
+            echo '<div class="quizattemptcounts">' . $strattemptnum . '</div>';
+        }
+
+        if (!$hasquestions) {
+            echo quiz_no_questions_message($quiz, $cm, $this->context);
+        } else if ($currentgroup == self::NO_GROUPS_ALLOWED) {
+            echo $OUTPUT->notification(get_string('notingroup'));
+        } else if (!$hasstudents) {
+            echo $OUTPUT->notification(get_string('nostudentsyet'));
+        } else if ($currentgroup && !$this->hasgroupstudents) {
+            echo $OUTPUT->notification(get_string('nostudentsingroup'));
+        }
     }
 
     /**
@@ -160,24 +203,10 @@ abstract class quiz_attempts_report extends quiz_default_report {
             $headers[] = get_string('firstname');
         }
 
-        // When downloading, some extra fields are always displayed (because
-        // there's no space constraint) so do not include in extra-field list.
-        $extrafields = get_extra_user_fields($this->context,
-                $table->is_downloading() ? array('institution', 'department', 'email') : array());
+        $extrafields = get_extra_user_fields($this->context);
         foreach ($extrafields as $field) {
             $columns[] = $field;
             $headers[] = get_user_field_name($field);
-        }
-
-        if ($table->is_downloading()) {
-            $columns[] = 'institution';
-            $headers[] = get_string('institution');
-
-            $columns[] = 'department';
-            $headers[] = get_string('department');
-
-            $columns[] = 'email';
-            $headers[] = get_string('email');
         }
     }
 
@@ -323,7 +352,7 @@ abstract class quiz_attempts_report extends quiz_default_report {
                          WHERE {$allowedjoins->wheres} AND quiza.id = :attemptid";
             }
             $params = $allowedjoins->params + array('attemptid' => $attemptid);
-            $attempt = $DB->get_record_sql($sql, $params);
+            $attempt = $DB->get_record_sql($sql, $params, IGNORE_MULTIPLE);
             if (!$attempt || $attempt->quiz != $quiz->id || $attempt->preview != 0) {
                 // Ensure the attempt exists, belongs to this quiz and belongs to
                 // a student included in the report. If not skip.

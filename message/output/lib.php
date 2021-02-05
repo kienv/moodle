@@ -112,7 +112,35 @@ abstract class message_output {
     public function has_message_preferences() {
         return true;
     }
+
+    /**
+     * Determines if this processor should process a message regardless of user preferences or site settings.
+     *
+     * @return bool
+     */
+    public function force_process_messages() {
+        return false;
+    }
+
+    /**
+     * Allow processors to perform cleanup tasks for all notifications by overriding this method
+     *
+     * @since Moodle 3.9
+     * @param int $notificationdeletetime
+     * @return void
+     */
+    public function cleanup_all_notifications(int $notificationdeletetime): void {
+        return;
+    }
+
+    /**
+     * Allow processors to perform cleanup tasks for read notifications by overriding this method
+     *
+     * @since Moodle 3.9
+     * @param int $notificationdeletetime
+     * @return void
+     */
+    public function cleanup_read_notifications(int $notificationdeletetime): void {
+        return;
+    }
 }
-
-
-

@@ -30,21 +30,38 @@ defined('MOODLE_INTERNAL') || die();
  * @param int $oldversion the version we are upgrading from.
  */
 function xmldb_qtype_multichoice_upgrade($oldversion) {
-    global $CFG;
+    global $CFG, $DB;
 
-    // Moodle v2.8.0 release upgrade line.
+    $dbman = $DB->get_manager();
+
+    // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v2.9.0 release upgrade line.
+    // Automatically generated Moodle v3.7.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.0.0 release upgrade line.
+    // Automatically generated Moodle v3.8.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.1.0 release upgrade line.
-    // Put any upgrade step following this.
+    // Add a new checkbox for the question author to decide
+    // Whether standard instruction ('Select one:' or 'Select one or more:') is displayed.
+    $newversion = 2020041600;
+    if ($oldversion < $newversion) {
 
-    // Automatically generated Moodle v3.2.0 release upgrade line.
+        // Define field showstandardinstruction to be added to qtype_multichoice_options.
+        $table = new xmldb_table('qtype_multichoice_options');
+        $field = new xmldb_field('showstandardinstruction', XMLDB_TYPE_INTEGER, '2',
+            null, XMLDB_NOTNULL, null, '1', 'shownumcorrect');
+
+        // Conditionally launch add field showstandardinstruction.
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Multichoice savepoint reached.
+        upgrade_plugin_savepoint(true, $newversion, 'qtype', 'multichoice');
+    }
+    // Automatically generated Moodle v3.9.0 release upgrade line.
     // Put any upgrade step following this.
 
     return true;

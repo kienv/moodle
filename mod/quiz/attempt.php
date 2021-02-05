@@ -39,10 +39,13 @@ if ($id = optional_param('id', 0, PARAM_INT)) {
 // Get submitted parameters.
 $attemptid = required_param('attempt', PARAM_INT);
 $page = optional_param('page', 0, PARAM_INT);
+$cmid = optional_param('cmid', null, PARAM_INT);
 
-$attemptobj = quiz_attempt::create($attemptid);
+$attemptobj = quiz_create_attempt_handling_errors($attemptid, $cmid);
 $page = $attemptobj->force_page_number_into_range($page);
 $PAGE->set_url($attemptobj->attempt_url(null, $page));
+// During quiz attempts, the browser back/forwards buttons should force a reload.
+$PAGE->set_cacheable(false);
 
 // Check login.
 require_login($attemptobj->get_course(), false, $attemptobj->get_cm());
@@ -119,9 +122,8 @@ $navbc = $attemptobj->get_navigation_panel($output, 'quiz_attempt_nav_panel', $p
 $regions = $PAGE->blocks->get_regions();
 $PAGE->blocks->add_fake_block($navbc, reset($regions));
 
-$title = get_string('attempt', 'quiz', $attemptobj->get_attempt_number());
 $headtags = $attemptobj->get_html_head_contributions($page);
-$PAGE->set_title($attemptobj->get_quiz_name());
+$PAGE->set_title($attemptobj->attempt_page_title($page));
 $PAGE->set_heading($attemptobj->get_course()->fullname);
 
 if ($attemptobj->is_last_page($page)) {

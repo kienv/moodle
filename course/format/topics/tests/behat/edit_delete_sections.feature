@@ -24,20 +24,18 @@ Feature: Sections can be edited and deleted in topics format
     And I am on "Course 1" course homepage with editing mode on
 
   Scenario: View the default name of the general section in topics format
-    When I click on "Edit section" "link" in the "li#section-0" "css_element"
+    When I edit the section "0"
     Then the field "Custom" matches value "0"
     And the field "New value for Section name" matches value "General"
 
   Scenario: Edit the default name of the general section in topics format
-    When I click on "Edit section" "link" in the "li#section-0" "css_element"
-    And I set the following fields to these values:
+    When I edit the section "0" and I fill the form with:
       | Custom | 1                     |
       | New value for Section name      | This is the general section |
-    And I press "Save changes"
     Then I should see "This is the general section" in the "li#section-0" "css_element"
 
   Scenario: View the default name of the second section in topics format
-    When I click on "Edit topic" "link" in the "li#section-2" "css_element"
+    When I edit the section "2"
     Then the field "Custom" matches value "0"
     And the field "New value for Section name" matches value "Topic 2"
 
@@ -55,9 +53,7 @@ Feature: Sections can be edited and deleted in topics format
 
   @javascript
   Scenario: Inline edit section name in topics format
-    When I click on "Edit topic name" "link" in the "li#section-1" "css_element"
-    And I set the field "New name for topic Topic 1" to "Midterm evaluation"
-    And I press key "13" in the field "New name for topic Topic 1"
+    When I set the field "Edit topic name" in the "li#section-1" "css_element" to "Midterm evaluation"
     Then I should not see "Topic 1" in the "region-main" "region"
     And "New name for topic" "field" should not exist
     And I should see "Midterm evaluation" in the "li#section-1" "css_element"
@@ -79,3 +75,18 @@ Feature: Sections can be edited and deleted in topics format
     And I should not see "Test chat name"
     And I should see "Test choice name" in the "li#section-4" "css_element"
     And I should see "Topic 4"
+
+  @javascript
+  Scenario: Adding sections in topics format
+    When I follow "Add topics"
+    Then the field "Number of sections" matches value "1"
+    And I press "Add topics"
+    And I should see "Topic 6" in the "li#section-6" "css_element"
+    And "li#section-7" "css_element" should not exist
+    And I follow "Add topics"
+    And I set the field "Number of sections" to "3"
+    And I press "Add topics"
+    And I should see "Topic 7" in the "li#section-7" "css_element"
+    And I should see "Topic 8" in the "li#section-8" "css_element"
+    And I should see "Topic 9" in the "li#section-9" "css_element"
+    And "li#section-10" "css_element" should not exist

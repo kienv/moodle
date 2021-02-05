@@ -32,15 +32,17 @@ defined('MOODLE_INTERNAL') || die();
 function xmldb_auth_email_upgrade($oldversion) {
     global $CFG, $DB;
 
-    // Automatically generated Moodle v3.2.0 release upgrade line.
+    // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
-    if ($oldversion < 2017020700) {
-        // Convert info in config plugins from auth/email to auth_email.
-        $DB->set_field('config_plugins', 'plugin', 'auth_email', array('plugin' => 'auth/email'));
-        upgrade_plugin_savepoint(true, 2017020700, 'auth', 'email');
-    }
+    // Automatically generated Moodle v3.7.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.8.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.9.0 release upgrade line.
+    // Put any upgrade step following this.
 
     return true;
 }
-

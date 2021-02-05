@@ -26,65 +26,29 @@ function xmldb_choice_upgrade($oldversion) {
 
     $dbman = $DB->get_manager();
 
-    if ($oldversion < 2014051201) {
+    // Automatically generated Moodle v3.6.0 release upgrade line.
+    // Put any upgrade step following this.
 
-        // Define field allowmultiple to be added to choice.
+    // Automatically generated Moodle v3.7.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.8.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.9.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    if ($oldversion < 2020061600) {
+        // Define field showavailable to be added to choice.
         $table = new xmldb_table('choice');
-        $field = new xmldb_field('allowmultiple', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '0', 'allowupdate');
+        $field = new xmldb_field('showavailable', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'completionsubmit');
 
-        // Conditionally launch add field allowmultiple.
         if (!$dbman->field_exists($table, $field)) {
             $dbman->add_field($table, $field);
         }
 
         // Choice savepoint reached.
-        upgrade_mod_savepoint(true, 2014051201, 'choice');
+        upgrade_mod_savepoint(true, 2020061600, 'choice');
     }
-
-    // Moodle v2.8.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    if ($oldversion < 2014111001) {
-
-        // Define field showpreview to be added to choice.
-        $table = new xmldb_table('choice');
-        $field = new xmldb_field('showpreview', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '0', 'timeclose');
-
-        // Conditionally launch add field showpreview.
-        if (!$dbman->field_exists($table, $field)) {
-            $dbman->add_field($table, $field);
-        }
-
-        // Choice savepoint reached.
-        upgrade_mod_savepoint(true, 2014111001, 'choice');
-    }
-
-    if ($oldversion < 2014111002) {
-
-        // Define field includeinactive to be added to choice.
-        $table = new xmldb_table('choice');
-        $field = new xmldb_field('includeinactive', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '1', 'showunanswered');
-
-        // Conditionally launch add field includeactive.
-        if (!$dbman->field_exists($table, $field)) {
-            $dbman->add_field($table, $field);
-        }
-
-        // Choice savepoint reached.
-        upgrade_mod_savepoint(true, 2014111002, 'choice');
-    }
-
-    // Moodle v2.9.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Moodle v3.0.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Moodle v3.1.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Automatically generated Moodle v3.2.0 release upgrade line.
-    // Put any upgrade step following this.
-
     return true;
 }

@@ -145,7 +145,8 @@ class zip_archive extends file_archive {
      */
     protected function mangle_pathname($localname) {
         $result = str_replace('\\', '/', $localname);   // no MS \ separators
-        $result = preg_replace('/\.\.+/', '', $result); // prevent /.../
+        $result = preg_replace('/\.\.+\//', '', $result); // Cleanup any potential ../ transversal (any number of dots).
+        $result = preg_replace('/\.\.+/', '.', $result); // Join together any number of consecutive dots.
         $result = ltrim($result, '/');                  // no leading slash
 
         if ($result === '.') {
@@ -662,6 +663,7 @@ class zip_archive extends file_archive {
                             case 'ISO-8859-6': $encoding = 'CP720'; break;
                             case 'ISO-8859-7': $encoding = 'CP737'; break;
                             case 'ISO-8859-8': $encoding = 'CP862'; break;
+                            case 'WINDOWS-1251': $encoding = 'CP866'; break;
                             case 'EUC-JP':
                             case 'UTF-8':
                                 if ($winchar = get_string('localewincharset', 'langconfig')) {

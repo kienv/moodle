@@ -25,6 +25,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 require_once($CFG->dirroot. '/course/format/lib.php');
+require_once($CFG->dirroot. '/course/lib.php');
 
 /**
  * Main class for the Weeks course format
@@ -124,6 +125,9 @@ class format_weeks extends format_base {
             if ($sectionno != 0 && $usercoursedisplay == COURSE_DISPLAY_MULTIPAGE) {
                 $url->param('section', $sectionno);
             } else {
+                if (empty($CFG->linkcoursesections) && !empty($options['navigation'])) {
+                    return null;
+                }
                 $url->set_anchor('section-'.$sectionno);
             }
         }
@@ -220,6 +224,7 @@ class format_weeks extends format_base {
      * Weeks format uses the following options:
      * - coursedisplay
      * - hiddensections
+     * - automaticenddate
      *
      * @param bool $foreditform
      * @return array of options
@@ -236,6 +241,10 @@ class format_weeks extends format_base {
                 'coursedisplay' => array(
                     'default' => $courseconfig->coursedisplay,
                     'type' => PARAM_INT,
+                ),
+                'automaticenddate' => array(
+                    'default' => 1,
+                    'type' => PARAM_BOOL,
                 ),
             );
         }
@@ -264,6 +273,12 @@ class format_weeks extends format_base {
                     ),
                     'help' => 'coursedisplay',
                     'help_component' => 'moodle',
+                ),
+                'automaticenddate' => array(
+                    'label' => new lang_string('automaticenddate', 'format_weeks'),
+                    'help' => 'automaticenddate',
+                    'help_component' => 'format_weeks',
+                    'element_type' => 'advcheckbox',
                 )
             );
             $courseformatoptions = array_merge_recursive($courseformatoptions, $courseformatoptionsedit);
@@ -297,6 +312,15 @@ class format_weeks extends format_base {
                 $mform->setDefault('numsections', $courseconfig->numsections);
             }
             array_unshift($elements, $element);
+        }
+
+        // Re-order things.
+        $mform->insertElementBefore($mform->removeElement('automaticenddate', false), 'idnumber');
+        $mform->disabledIf('enddate', 'automaticenddate', 'checked');
+        foreach ($elements as $key => $element) {
+            if ($element->getName() == 'automaticenddate') {
+                unset($elements[$key]);
+            }
         }
 
         return $elements;
@@ -340,10 +364,12 @@ class format_weeks extends format_base {
      * @return stdClass property start for startdate, property end for enddate
      */
     public function get_section_dates($section, $startdate = false) {
+        global $USER;
 
         if ($startdate === false) {
             $course = $this->get_course();
-            $startdate = $course->startdate;
+            $userdates = course_get_course_dates_for_user_id($course, $USER->id);
+            $startdate = $userdates['start'];
         }
 
         if (is_object($section)) {
@@ -481,6 +507,77 @@ class format_weeks extends format_base {
         $renderer = $PAGE->get_renderer('format_weeks');
         $rv['section_availability'] = $renderer->section_availability($this->get_section($section));
         return $rv;
+    }
+
+    /**
+     * Updates the end date for a course in weeks format if option automaticenddate is set.
+     *
+     * This method is called from event observers and it can not use any modinfo or format caches because
+     * events are triggered before the caches are reset.
+     *
+     * @param int $courseid
+     */
+    public static function update_end_date($courseid) {
+        global $DB, $COURSE;
+
+        // Use one DB query to retrieve necessary fields in course, value for automaticenddate and number of the last
+        // section. This query will also validate that the course is indeed in 'weeks' format.
+        $insql = "SELECT c.id, c.format, c.startdate, c.enddate, MAX(s.section) AS lastsection
+                    FROM {course} c
+                    JOIN {course_sections} s
+                      ON s.course = c.id
+                   WHERE c.format = :format
+                     AND c.id = :courseid
+                GROUP BY c.id, c.format, c.startdate, c.enddate";
+        $sql = "SELECT co.id, co.format, co.startdate, co.enddate, co.lastsection, fo.value AS automaticenddate
+                  FROM ($insql) co
+             LEFT JOIN {course_format_options} fo
+                    ON fo.courseid = co.id
+                   AND fo.format = co.format
+                   AND fo.name = :optionname
+                   AND fo.sectionid = 0";
+        $course = $DB->get_record_sql($sql,
+            ['optionname' => 'automaticenddate', 'format' => 'weeks', 'courseid' => $courseid]);
+
+        if (!$course) {
+            // Looks like it is a course in a different format, nothing to do here.
+            return;
+        }
+
+        // Create an instance of this class and mock the course object.
+        $format = new format_weeks('weeks', $courseid);
+        $format->course = $course;
+
+        // If automaticenddate is not specified take the default value.
+        if (!isset($course->automaticenddate)) {
+            $defaults = $format->course_format_options();
+            $course->automaticenddate = $defaults['automaticenddate']['default'];
+        }
+
+        // Check that the course format for setting an automatic date is set.
+        if (!empty($course->automaticenddate)) {
+            // Get the final week's last day.
+            $dates = $format->get_section_dates((int)$course->lastsection);
+
+            // Set the course end date.
+            if ($course->enddate != $dates->end) {
+                $DB->set_field('course', 'enddate', $dates->end, array('id' => $course->id));
+                if (isset($COURSE->id) && $COURSE->id == $courseid) {
+                    $COURSE->enddate = $dates->end;
+                }
+            }
+        }
+    }
+
+    /**
+     * Return the plugin configs for external functions.
+     *
+     * @return array the list of configuration settings
+     * @since Moodle 3.5
+     */
+    public function get_config_for_external() {
+        // Return everything (nothing to hide).
+        return $this->get_format_options();
     }
 }
 

@@ -17,7 +17,7 @@
 define('NO_MOODLE_COOKIES', true); // Session not used here.
 
 require('../../../config.php');
-require('../lib.php');
+require_once('../lib.php');
 
 $chatsid      = required_param('chat_sid', PARAM_ALPHANUM);
 $chatlasttime = optional_param('chat_lasttime', 0, PARAM_INT);
@@ -173,7 +173,11 @@ if ($refreshusers) {
     <body>
 <?php
 if ($beep) {
-    echo '<embed src="../beep.wav" autostart="true" hidden="true" name="beep" />';
+    echo '<script> (function() {';
+    echo 'var audioElement = document.createElement("audio");';
+    echo 'audioElement.setAttribute("src", "../beep.mp3");';
+    echo 'audioElement.play(); })();';
+    echo '</script>';
 }
 ?>
        <a href="<?php echo $refreshurlamp ?>" name="refreshLink">Refresh link</a>

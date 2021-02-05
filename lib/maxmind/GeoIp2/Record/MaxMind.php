@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace GeoIp2\Record;
 
 /**
@@ -15,5 +17,5 @@ class MaxMind extends AbstractRecord
     /**
      * @ignore
      */
-    protected $validAttributes = array('queriesRemaining');
+    protected $validAttributes = ['queriesRemaining'];
 }

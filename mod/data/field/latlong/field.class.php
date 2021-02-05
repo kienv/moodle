@@ -67,7 +67,7 @@ class data_field_latlong extends data_field_base {
         if ($this->field->required) {
             $str .= $OUTPUT->pix_icon('req', get_string('requiredelement', 'form'));
         }
-        $classes = 'form-control m-x-1';
+        $classes = 'form-control mx-1';
         $str .= '</label></td><td>';
         $str .= '<input class="' . $classes . '" type="text" name="field_'.$this->field->id.'_0" ';
         $str .= ' id="field_'.$this->field->id.'_0" value="';
@@ -78,7 +78,7 @@ class data_field_latlong extends data_field_base {
         if ($this->field->required) {
             $str .= $OUTPUT->pix_icon('req', get_string('requiredelement', 'form'));
         }
-        $classes = 'form-control m-x-1';
+        $classes = 'form-control mx-1';
         $str .= '</label></td><td><input class="' . $classes . '" type="text" ';
         $str .= 'name="field_'.$this->field->id.'_1" id="field_'.$this->field->id.'_1" value="';
         $str .= s($long).'" size="10" />°E</td>';
@@ -104,14 +104,17 @@ class data_field_latlong extends data_field_base {
         foreach ($latlongsrs as $latlong) {
             $latitude = format_float($latlong->la, 4);
             $longitude = format_float($latlong->lo, 4);
-            $options[$latlong->la . ',' . $latlong->lo] = $latitude . ' ' . $longitude;
+            if ($latitude && $longitude) {
+                $options[$latlong->la . ',' . $latlong->lo] = $latitude . ' ' . $longitude;
+            }
         }
         $latlongsrs->close();
 
         $classes = array('class' => 'accesshide');
         $return = html_writer::label(get_string('latlong', 'data'), 'menuf_'.$this->field->id, false, $classes);
         $classes = array('class' => 'custom-select');
-        $return .= html_writer::select($options, 'f_'.$this->field->id, $value, null, $classes);
+        $return .= html_writer::select($options, 'f_'.$this->field->id, $value, array('' => get_string('menuchoose', 'data')),
+            $classes);
        return $return;
     }
 
@@ -196,7 +199,7 @@ class data_field_latlong extends data_field_base {
                 }
                 // NB! If you are editing this, make sure you don't break the javascript reference "previousSibling"
                 //   which allows the "Go" button to refer to the drop-down selector.
-                $str .= '\n</select><input type="button" class="btn m-l-1 btn-secondary" value="' . get_string('go');
+                $str .= '\n</select><input type="button" class="btn ml-1 btn-secondary" value="' . get_string('go');
                 $str .= '" onclick="if(previousSibling.value){self.location=previousSibling.value}"/>';
                 $str .= '</form>';
             } else {

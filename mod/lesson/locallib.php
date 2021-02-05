@@ -61,9 +61,8 @@ define("LESSON_MAX_EVENT_LENGTH", "432000");
 /** Answer format is HTML */
 define("LESSON_ANSWER_HTML", "HTML");
 
-// Event types.
-define('LESSON_EVENT_TYPE_OPEN', 'open');
-define('LESSON_EVENT_TYPE_CLOSE', 'close');
+/** Placeholder answer for all other answers. */
+define("LESSON_OTHER_ANSWERS", "@#wronganswer#@");
 
 //////////////////////////////////////////////////////////////////////////////////////
 /// Any other lesson functions go here.  Each of them must have a name that
@@ -302,9 +301,11 @@ function lesson_grade($lesson, $ntries, $userid = 0) {
             $attemptset[$useranswer->pageid][] = $useranswer;
         }
 
-        // Drop all attempts that go beyond max attempts for the lesson
-        foreach ($attemptset as $key => $set) {
-            $attemptset[$key] = array_slice($set, 0, $lesson->maxattempts);
+        if (!empty($lesson->maxattempts)) {
+            // Drop all attempts that go beyond max attempts for the lesson.
+            foreach ($attemptset as $key => $set) {
+                $attemptset[$key] = array_slice($set, 0, $lesson->maxattempts);
+            }
         }
 
         // get only the pages and their answers that the user answered
@@ -585,7 +586,7 @@ function lesson_add_header_buttons($cm, $context, $extraeditbuttons=false, $less
                 'id'       => $cm->id,
                 'pageid'   => $lessonpageid,
                 'edit'     => 1,
-                'returnto' => $PAGE->url->out(false)
+                'returnto' => $PAGE->url->out_as_local_url(false)
             ));
             $PAGE->set_button($OUTPUT->single_button($url, get_string('editpagecontent', 'lesson')));
         }
@@ -687,7 +688,7 @@ function lesson_process_group_deleted_in_course($courseid, $groupid = null) {
  * @since  Moodle 3.3
  */
 function lesson_get_overview_report_table_and_data(lesson $lesson, $currentgroup) {
-    global $DB, $CFG;
+    global $DB, $CFG, $OUTPUT;
     require_once($CFG->dirroot . '/mod/lesson/pagetypes/branchtable.php');
 
     $context = $lesson->context;
@@ -704,10 +705,12 @@ function lesson_get_overview_report_table_and_data(lesson $lesson, $currentgroup
         list($esql, $params) = get_enrolled_sql($context, '', $currentgroup, true);
         list($sort, $sortparams) = users_order_by_sql('u');
 
+        $extrafields = get_extra_user_fields($context);
+
         $params['a1lessonid'] = $lesson->id;
         $params['b1lessonid'] = $lesson->id;
         $params['c1lessonid'] = $lesson->id;
-        $ufields = user_picture::fields('u');
+        $ufields = user_picture::fields('u', $extrafields);
         $sql = "SELECT DISTINCT $ufields
                 FROM {user} u
                 JOIN (
@@ -895,16 +898,53 @@ function lesson_get_overview_report_table_and_data(lesson $lesson, $currentgroup
 
     $table = new html_table();
 
+    $headers = [get_string('name')];
+
+    foreach ($extrafields as $field) {
+        $headers[] = get_user_field_name($field);
+    }
+
+    $caneditlesson = has_capability('mod/lesson:edit', $context);
+    $attemptsheader = get_string('attempts', 'lesson');
+    if ($caneditlesson) {
+        $selectall = get_string('selectallattempts', 'lesson');
+        $deselectall = get_string('deselectallattempts', 'lesson');
+        // Build the select/deselect all control.
+        $selectallid = 'selectall-attempts';
+        $mastercheckbox = new \core\output\checkbox_toggleall('lesson-attempts', true, [
+            'id' => $selectallid,
+            'name' => $selectallid,
+            'value' => 1,
+            'label' => $selectall,
+            'selectall' => $selectall,
+            'deselectall' => $deselectall,
+            'labelclasses' => 'form-check-label'
+        ]);
+        $attemptsheader = $OUTPUT->render($mastercheckbox);
+    }
+    $headers [] = $attemptsheader;
+
     // Set up the table object.
     if ($data->lessonscored) {
-        $table->head = array(get_string('name'), get_string('attempts', 'lesson'), get_string('highscore', 'lesson'));
-    } else {
-        $table->head = array(get_string('name'), get_string('attempts', 'lesson'));
+        $headers [] = get_string('highscore', 'lesson');
     }
-    $table->align = array('center', 'left', 'left');
-    $table->wrap = array('nowrap', 'nowrap', 'nowrap');
-    $table->attributes['class'] = 'standardtable generaltable';
-    $table->size = array(null, '70%', null);
+
+    $colcount = count($headers);
+
+    $table->head = $headers;
+
+    $table->align = [];
+    $table->align = array_pad($table->align, $colcount, 'center');
+    $table->align[$colcount - 1] = 'left';
+
+    if ($data->lessonscored) {
+        $table->align[$colcount - 2] = 'left';
+    }
+
+    $table->wrap = [];
+    $table->wrap = array_pad($table->wrap, $colcount, 'nowrap');
+
+    $table->attributes['class'] = 'table table-striped';
 
     // print out the $studentdata array
     // going through each student that has attempted the lesson, so, each student should have something to be displayed
@@ -917,7 +957,7 @@ function lesson_get_overview_report_table_and_data(lesson $lesson, $currentgroup
             $dataforstudent->attempts = array();
             // gather the data for each user attempt
             $bestgrade = 0;
-            $bestgradefound = false;
+
             // $tries holds all the tries/retries a student has done
             $tries = $studentdata[$student->id];
             $studentname = fullname($student, true);
@@ -926,44 +966,65 @@ function lesson_get_overview_report_table_and_data(lesson $lesson, $currentgroup
                 $dataforstudent->attempts[] = $try;
 
                 // Start to build up the checkbox and link.
-                if (has_capability('mod/lesson:edit', $context)) {
-                    $temp = '<input type="checkbox" id="attempts" name="attempts['.$try['userid'].']['.$try['try'].']" /> ';
-                } else {
-                    $temp = '';
-                }
+                $attempturlparams = [
+                    'id' => $cm->id,
+                    'action' => 'reportdetail',
+                    'userid' => $try['userid'],
+                    'try' => $try['try'],
+                ];
 
-                $temp .= "<a href=\"report.php?id=$cm->id&amp;action=reportdetail&amp;userid=".$try['userid']
-                        .'&amp;try='.$try['try'].'" class="lesson-attempt-link">';
                 if ($try["grade"] !== null) { // if null then not done yet
                     // this is what the link does when the user has completed the try
                     $timetotake = $try["timeend"] - $try["timestart"];
 
-                    $temp .= $try["grade"]."%";
-                    $bestgradefound = true;
                     if ($try["grade"] > $bestgrade) {
                         $bestgrade = $try["grade"];
                     }
-                    $temp .= "&nbsp;".userdate($try["timestart"]);
-                    $temp .= ",&nbsp;(".format_time($timetotake).")</a>";
+
+                    $attemptdata = (object)[
+                        'grade' => $try["grade"],
+                        'timestart' => userdate($try["timestart"]),
+                        'duration' => format_time($timetotake),
+                    ];
+                    $attemptlinkcontents = get_string('attemptinfowithgrade', 'lesson', $attemptdata);
+
                 } else {
                     if ($try["end"]) {
                         // User finished the lesson but has no grade. (Happens when there are only content pages).
-                        $temp .= "&nbsp;".userdate($try["timestart"]);
                         $timetotake = $try["timeend"] - $try["timestart"];
-                        $temp .= ",&nbsp;(".format_time($timetotake).")</a>";
+                        $attemptdata = (object)[
+                            'timestart' => userdate($try["timestart"]),
+                            'duration' => format_time($timetotake),
+                        ];
+                        $attemptlinkcontents = get_string('attemptinfonograde', 'lesson', $attemptdata);
                     } else {
                         // This is what the link does/looks like when the user has not completed the attempt.
-                        $temp .= get_string("notcompleted", "lesson");
                         if ($try['timestart'] !== 0) {
                             // Teacher previews do not track time spent.
-                            $temp .= "&nbsp;".userdate($try["timestart"]);
+                            $attemptlinkcontents = get_string("notcompletedwithdate", "lesson", userdate($try["timestart"]));
+                        } else {
+                            $attemptlinkcontents = get_string("notcompleted", "lesson");
                         }
-                        $temp .= "</a>";
                         $timetotake = null;
                     }
                 }
+                $attempturl = new moodle_url('/mod/lesson/report.php', $attempturlparams);
+                $attemptlink = html_writer::link($attempturl, $attemptlinkcontents, ['class' => 'lesson-attempt-link']);
+
+                if ($caneditlesson) {
+                    $attemptid = 'attempt-' . $try['userid'] . '-' . $try['try'];
+                    $attemptname = 'attempts[' . $try['userid'] . '][' . $try['try'] . ']';
+
+                    $checkbox = new \core\output\checkbox_toggleall('lesson-attempts', false, [
+                        'id' => $attemptid,
+                        'name' => $attemptname,
+                        'label' => $attemptlink
+                    ]);
+                    $attemptlink = $OUTPUT->render($checkbox);
+                }
+
                 // build up the attempts array
-                $attempts[] = $temp;
+                $attempts[] = $attemptlink;
 
                 // Run these lines for the stats only if the user finnished the lesson.
                 if ($try["end"]) {
@@ -991,14 +1052,21 @@ function lesson_get_overview_report_table_and_data(lesson $lesson, $currentgroup
             }
             // get line breaks in after each attempt
             $attempts = implode("<br />\n", $attempts);
+            $row = [$studentname];
+
+            foreach ($extrafields as $field) {
+                $row[] = $student->$field;
+            }
+
+            $row[] = $attempts;
 
             if ($data->lessonscored) {
                 // Add the grade if the lesson is graded.
-                $table->data[] = array($studentname, $attempts, $bestgrade . "%");
-            } else {
-                // This lesson does not have a grade.
-                $table->data[] = array($studentname, $attempts);
+                $row[] = $bestgrade."%";
             }
+
+            $table->data[] = $row;
+
             // Add the student data.
             $dataforstudent->id = $student->id;
             $dataforstudent->fullname = $studentname;
@@ -1031,6 +1099,7 @@ function lesson_get_user_detailed_report_data(lesson $lesson, $userid, $attempt)
         $lesson->update_effective_access($userid);
     }
 
+    $pageid = 0;
     $lessonpages = $lesson->load_all_pages();
     foreach ($lessonpages as $lessonpage) {
         if ($lessonpage->prevpageid == 0) {
@@ -1078,6 +1147,8 @@ function lesson_get_user_detailed_report_data(lesson $lesson, $userid, $attempt)
     while ($pageid != 0) { // EOL
         $page = $lessonpages[$pageid];
         $answerpage = new stdClass;
+        // Keep the original page object.
+        $answerpage->page = $page;
         $data ='';
 
         $answerdata = new stdClass;
@@ -1156,6 +1227,44 @@ function lesson_get_user_detailed_report_data(lesson $lesson, $userid, $attempt)
     return array($answerpages, $userstats);
 }
 
+/**
+ * Return user's deadline for all lessons in a course, hereby taking into account group and user overrides.
+ *
+ * @param int $courseid the course id.
+ * @return object An object with of all lessonsids and close unixdates in this course,
+ * taking into account the most lenient overrides, if existing and 0 if no close date is set.
+ */
+function lesson_get_user_deadline($courseid) {
+    global $DB, $USER;
+
+    // For teacher and manager/admins return lesson's deadline.
+    if (has_capability('moodle/course:update', context_course::instance($courseid))) {
+        $sql = "SELECT lesson.id, lesson.deadline AS userdeadline
+                  FROM {lesson} lesson
+                 WHERE lesson.course = :courseid";
+
+        $results = $DB->get_records_sql($sql, array('courseid' => $courseid));
+        return $results;
+    }
+
+    $sql = "SELECT a.id,
+                   COALESCE(v.userclose, v.groupclose, a.deadline, 0) AS userdeadline
+              FROM (
+                      SELECT lesson.id as lessonid,
+                             MAX(leo.deadline) AS userclose, MAX(qgo.deadline) AS groupclose
+                        FROM {lesson} lesson
+                   LEFT JOIN {lesson_overrides} leo on lesson.id = leo.lessonid AND leo.userid = :userid
+                   LEFT JOIN {groups_members} gm ON gm.userid = :useringroupid
+                   LEFT JOIN {lesson_overrides} qgo on lesson.id = qgo.lessonid AND qgo.groupid = gm.groupid
+                       WHERE lesson.course = :courseid
+                    GROUP BY lesson.id
+                   ) v
+              JOIN {lesson} a ON a.id = v.lessonid";
+
+    $results = $DB->get_records_sql($sql, array('userid' => $USER->id, 'useringroupid' => $USER->id, 'courseid' => $courseid));
+    return $results;
+
+}
 
 /**
  * Abstract class that page type's MUST inherit from.
@@ -1242,14 +1351,21 @@ abstract class lesson_add_page_form_base extends moodleform {
      * and then calls custom_definition();
      */
     public final function definition() {
+        global $CFG;
         $mform = $this->_form;
         $editoroptions = $this->_customdata['editoroptions'];
 
-        $mform->addElement('header', 'qtypeheading', get_string('createaquestionpage', 'lesson', get_string($this->qtypestring, 'lesson')));
+        if ($this->qtypestring != 'selectaqtype') {
+            if ($this->_customdata['edit']) {
+                $mform->addElement('header', 'qtypeheading', get_string('edit'. $this->qtypestring, 'lesson'));
+            } else {
+                $mform->addElement('header', 'qtypeheading', get_string('add'. $this->qtypestring, 'lesson'));
+            }
+        }
 
         if (!empty($this->_customdata['returnto'])) {
             $mform->addElement('hidden', 'returnto', $this->_customdata['returnto']);
-            $mform->setType('returnto', PARAM_URL);
+            $mform->setType('returnto', PARAM_LOCALURL);
         }
 
         $mform->addElement('hidden', 'id');
@@ -1263,8 +1379,12 @@ abstract class lesson_add_page_form_base extends moodleform {
             $mform->setType('qtype', PARAM_INT);
 
             $mform->addElement('text', 'title', get_string('pagetitle', 'lesson'), array('size'=>70));
-            $mform->setType('title', PARAM_TEXT);
             $mform->addRule('title', get_string('required'), 'required', null, 'client');
+            if (!empty($CFG->formatstringstriptags)) {
+                $mform->setType('title', PARAM_TEXT);
+            } else {
+                $mform->setType('title', PARAM_CLEANHTML);
+            }
 
             $this->editoroptions = array('noclean'=>true, 'maxfiles'=>EDITOR_UNLIMITED_FILES, 'maxbytes'=>$this->_customdata['maxbytes']);
             $mform->addElement('editor', 'contents_editor', get_string('pagecontents', 'lesson'), null, $this->editoroptions);
@@ -1340,9 +1460,11 @@ abstract class lesson_add_page_form_base extends moodleform {
      * @param string $label, null means default
      * @param bool $required
      * @param string $format
+     * @param array $help Add help text via the addHelpButton. Must be an array which contains the string identifier and
+     *                      component as it's elements
      * @return void
      */
-    protected final function add_answer($count, $label = null, $required = false, $format= '') {
+    protected final function add_answer($count, $label = null, $required = false, $format= '', array $help = []) {
         if ($label === null) {
             $label = get_string('answer', 'lesson');
         }
@@ -1355,12 +1477,16 @@ abstract class lesson_add_page_form_base extends moodleform {
             $this->_form->setDefault('answer_editor['.$count.']', array('text' => '', 'format' => FORMAT_HTML));
         } else {
             $this->_form->addElement('text', 'answer_editor['.$count.']', $label,
-                    array('size' => '50', 'maxlength' => '200'));
+                array('size' => '50', 'maxlength' => '200'));
             $this->_form->setType('answer_editor['.$count.']', PARAM_TEXT);
         }
 
         if ($required) {
             $this->_form->addRule('answer_editor['.$count.']', get_string('required'), 'required', null, 'client');
+        }
+
+        if ($help) {
+            $this->_form->addHelpButton("answer_editor[$count]", $help['identifier'], $help['component']);
         }
     }
     /**
@@ -1566,6 +1692,9 @@ class lesson extends lesson_base {
 
         $this->delete_all_overrides();
 
+        grade_update('mod/lesson', $this->properties->course, 'mod', 'lesson', $this->properties->id, 0, null, array('deleted'=>1));
+
+        // We must delete the module record after we delete the grade item.
         $DB->delete_records("lesson", array("id"=>$this->properties->id));
         $DB->delete_records("lesson_pages", array("lessonid"=>$this->properties->id));
         $DB->delete_records("lesson_answers", array("lessonid"=>$this->properties->id));
@@ -1574,7 +1703,9 @@ class lesson extends lesson_base {
         $DB->delete_records("lesson_timer", array("lessonid"=>$this->properties->id));
         $DB->delete_records("lesson_branch", array("lessonid"=>$this->properties->id));
         if ($events = $DB->get_records('event', array("modulename"=>'lesson', "instance"=>$this->properties->id))) {
+            $coursecontext = context_course::instance($cm->course);
             foreach($events as $event) {
+                $event->context = $coursecontext;
                 $event = calendar_event::load($event);
                 $event->delete();
             }
@@ -1584,7 +1715,6 @@ class lesson extends lesson_base {
         $fs = get_file_storage();
         $fs->delete_area_files($context->id);
 
-        grade_update('mod/lesson', $this->properties->course, 'mod', 'lesson', $this->properties->id, 0, null, array('deleted'=>1));
         return true;
     }
 
@@ -1653,6 +1783,25 @@ class lesson extends lesson_base {
         foreach ($overrides as $override) {
             $this->delete_override($override->id);
         }
+    }
+
+    /**
+     * Checks user enrollment in the current course.
+     *
+     * @param int $userid
+     * @return null|stdClass user record
+     */
+    public function is_participant($userid) {
+        return is_enrolled($this->get_context(), $userid, 'mod/lesson:view', $this->show_only_active_users());
+    }
+
+    /**
+     * Check is only active users in course should be shown.
+     *
+     * @return bool true if only active users should be shown.
+     */
+    public function show_only_active_users() {
+        return !has_capability('moodle/course:viewsuspendedusers', $this->get_context());
     }
 
     /**
@@ -2158,7 +2307,7 @@ class lesson extends lesson_base {
 
     /**
      * Returns the link for the related activity
-     * @return array|false
+     * @return string
      */
     public function link_for_activitylink() {
         global $DB;
@@ -2168,9 +2317,9 @@ class lesson extends lesson_base {
             if ($modname) {
                 $instancename = $DB->get_field($modname, 'name', array('id' => $module->instance));
                 if ($instancename) {
-                    return html_writer::link(new moodle_url('/mod/'.$modname.'/view.php', array('id'=>$this->properties->activitylink)),
-                        get_string('activitylinkname', 'lesson', $instancename),
-                        array('class'=>'centerpadded lessonbutton standardbutton'));
+                    return html_writer::link(new moodle_url('/mod/'.$modname.'/view.php',
+                        array('id' => $this->properties->activitylink)), get_string('activitylinkname',
+                        'lesson', $instancename), array('class' => 'centerpadded lessonbutton standardbutton pr-3'));
                 }
             }
         }
@@ -2479,6 +2628,11 @@ class lesson extends lesson_base {
                     }
                     if (!array_key_exists($exitjump, $lessonpages)) {
                         return LESSON_EOL;
+                    }
+                    // Check to see that the return type is not a cluster.
+                    if ($lessonpages[$exitjump]->qtype == LESSON_PAGE_CLUSTER) {
+                        // If the exitjump is a cluster then go through this function again and try to find an unseen question.
+                        $exitjump = $this->cluster_jump($exitjump, $userid);
                     }
                     return $exitjump;
                 }
@@ -2993,7 +3147,7 @@ class lesson extends lesson_base {
                         $this->add_message(get_string('numberofpagesviewednotice', 'lesson', $a));
                     }
 
-                    if (!$reviewmode && !$this->properties->retake) {
+                    if (!$reviewmode && $this->properties->ongoing) {
                         $this->add_message(get_string("numberofcorrectanswers", "lesson", $gradeinfo->earned), 'notify');
                         if ($this->properties->grade != GRADE_TYPE_NONE) {
                             $a = new stdClass;
@@ -3274,6 +3428,7 @@ class lesson extends lesson_base {
             $result = new stdClass;
             $result->newpageid       = optional_param('newpageid', $page->nextpageid, PARAM_INT);
             $result->nodefaultresponse  = true;
+            $result->inmediatejump = false;
         }
 
         if ($result->inmediatejump) {
@@ -3506,6 +3661,23 @@ class lesson extends lesson_base {
         }
         return $data;
     }
+
+    /**
+     * Returns the last "legal" attempt from the list of student attempts.
+     *
+     * @param array $attempts The list of student attempts.
+     * @return stdClass The updated fom data.
+     */
+    public function get_last_attempt(array $attempts): stdClass {
+        // If there are more tries than the max that is allowed, grab the last "legal" attempt.
+        if (!empty($this->maxattempts) && (count($attempts) > $this->maxattempts)) {
+            $lastattempt = $attempts[$this->maxattempts - 1];
+        } else {
+            // Grab the last attempt since there's no limit to the max attempts or the user has made fewer attempts than the max.
+            $lastattempt = end($attempts);
+        }
+        return $lastattempt;
+    }
 }
 
 
@@ -3667,6 +3839,11 @@ abstract class lesson_page extends lesson_base {
     const TYPE_STRUCTURE = 1;
 
     /**
+     * Constant used as a delimiter when parsing multianswer questions
+     */
+    const MULTIANSWER_DELIMITER = '@^#|';
+
+    /**
      * This method should return the integer used to identify the page type within
      * the database and throughout code. This maps back to the defines used in 1.x
      * @abstract
@@ -3813,6 +3990,7 @@ abstract class lesson_page extends lesson_base {
         if ($attempts = $DB->get_records('lesson_attempts', array("pageid" => $this->properties->id))) {
             foreach ($attempts as $attempt) {
                 $fs->delete_area_files($context->id, 'mod_lesson', 'essay_responses', $attempt->id);
+                $fs->delete_area_files($context->id, 'mod_lesson', 'essay_answers', $attempt->id);
             }
         }
 
@@ -3820,6 +3998,15 @@ abstract class lesson_page extends lesson_base {
         $DB->delete_records("lesson_attempts", array("pageid" => $this->properties->id));
 
         $DB->delete_records("lesson_branch", array("pageid" => $this->properties->id));
+
+        // Delete files related to answers and responses.
+        if ($answers = $DB->get_records("lesson_answers", array("pageid" => $this->properties->id))) {
+            foreach ($answers as $answer) {
+                $fs->delete_area_files($context->id, 'mod_lesson', 'page_answers', $answer->id);
+                $fs->delete_area_files($context->id, 'mod_lesson', 'page_responses', $answer->id);
+            }
+        }
+
         // ...now delete the answers...
         $DB->delete_records("lesson_answers", array("pageid" => $this->properties->id));
         // ..and the page itself
@@ -3839,8 +4026,6 @@ abstract class lesson_page extends lesson_base {
 
         // Delete files associated with this page.
         $fs->delete_area_files($context->id, 'mod_lesson', 'page_contents', $this->properties->id);
-        $fs->delete_area_files($context->id, 'mod_lesson', 'page_answers', $this->properties->id);
-        $fs->delete_area_files($context->id, 'mod_lesson', 'page_responses', $this->properties->id);
 
         // repair the hole in the linkage
         if (!$this->properties->prevpageid && !$this->properties->nextpageid) {
@@ -3966,7 +4151,7 @@ abstract class lesson_page extends lesson_base {
                     'userid' => $USER->id, 'pageid' => $this->properties->id, 'retry' => $nretakes));
 
                 // Check if they have reached (or exceeded) the maximum number of attempts allowed.
-                if ($nattempts >= $this->lesson->maxattempts) {
+                if (!empty($this->lesson->maxattempts) && $nattempts >= $this->lesson->maxattempts) {
                     $result->maxattemptsreached = true;
                     $result->feedback = get_string('maximumnumberofattemptsreached', 'lesson');
                     $result->newpageid = $this->lesson->get_next_page($this->properties->nextpageid);
@@ -3997,6 +4182,14 @@ abstract class lesson_page extends lesson_base {
                 if (!$userisreviewing) {
                     if ($this->lesson->retake || (!$this->lesson->retake && $nretakes == 0)) {
                         $attempt->id = $DB->insert_record("lesson_attempts", $attempt);
+
+                        list($updatedattempt, $updatedresult) = $this->on_after_write_attempt($attempt, $result);
+                        if ($updatedattempt) {
+                            $attempt = $updatedattempt;
+                            $result = $updatedresult;
+                            $DB->update_record("lesson_attempts", $attempt);
+                        }
+
                         // Trigger an event: question answered.
                         $eventparams = array(
                             'context' => context_module::instance($PAGE->cm->id),
@@ -4012,12 +4205,22 @@ abstract class lesson_page extends lesson_base {
                         // Increase the number of attempts made.
                         $nattempts++;
                     }
+                } else {
+                    // When reviewing the lesson, the existing attemptid is also needed for the filearea options.
+                    $params = [
+                        'lessonid' => $attempt->lessonid,
+                        'pageid' => $attempt->pageid,
+                        'userid' => $attempt->userid,
+                        'answerid' => $attempt->answerid,
+                        'retry' => $attempt->retry
+                    ];
+                    $attempt->id = $DB->get_field('lesson_attempts', 'id', $params);
                 }
                 // "number of attempts remaining" message if $this->lesson->maxattempts > 1
                 // displaying of message(s) is at the end of page for more ergonomic display
                 if (!$result->correctanswer && ($result->newpageid == 0)) {
-                    // retreive the number of attempts left counter for displaying at bottom of feedback page
-                    if ($nattempts >= $this->lesson->maxattempts) {
+                    // Retrieve the number of attempts left counter for displaying at bottom of feedback page.
+                    if (!empty($this->lesson->maxattempts) && $nattempts >= $this->lesson->maxattempts) {
                         if ($this->lesson->maxattempts > 1) { // don't bother with message if only one attempt
                             $result->maxattemptsreached = true;
                         }
@@ -4054,7 +4257,11 @@ abstract class lesson_page extends lesson_base {
                     if ($qattempts == 1) {
                         $result->feedback = $OUTPUT->box(get_string("firstwrong", "lesson"), 'feedback');
                     } else {
-                        $result->feedback = $OUTPUT->box(get_string("secondpluswrong", "lesson"), 'feedback');
+                        if (!$result->maxattemptsreached) {
+                            $result->feedback = $OUTPUT->box(get_string("secondpluswrong", "lesson"), 'feedback');
+                        } else {
+                            $result->feedback = $OUTPUT->box(get_string("finalwrong", "lesson"), 'feedback');
+                        }
                     }
                 } else {
                     $result->feedback = '';
@@ -4070,31 +4277,100 @@ abstract class lesson_page extends lesson_base {
                 $options->para = true;
                 $options->overflowdiv = true;
                 $options->context = $context;
+                $options->attemptid = isset($attempt) ? $attempt->id : null;
 
                 $result->feedback .= $OUTPUT->box(format_text($this->get_contents(), $this->properties->contentsformat, $options),
-                        'generalbox boxaligncenter');
-                if (isset($result->studentanswerformat)) {
-                    // This is the student's answer so it should be cleaned.
-                    $studentanswer = format_text($result->studentanswer, $result->studentanswerformat,
-                            array('context' => $context, 'para' => true));
-                } else {
-                    $studentanswer = format_string($result->studentanswer);
-                }
+                        'generalbox boxaligncenter py-3');
                 $result->feedback .= '<div class="correctanswer generalbox"><em>'
-                        . get_string("youranswer", "lesson").'</em> : ' . $studentanswer;
-                if (isset($result->responseformat)) {
-                    $result->response = file_rewrite_pluginfile_urls($result->response, 'pluginfile.php', $context->id,
-                            'mod_lesson', 'page_responses', $result->answerid);
-                    $result->feedback .= $OUTPUT->box(format_text($result->response, $result->responseformat, $options)
-                            , $class);
+                        . get_string("youranswer", "lesson").'</em> : <div class="studentanswer mt-2 mb-2">';
+
+                // Create a table containing the answers and responses.
+                $table = new html_table();
+                // Multianswer allowed.
+                if ($this->properties->qoption) {
+                    $studentanswerarray = explode(self::MULTIANSWER_DELIMITER, $result->studentanswer);
+                    $responsearr = explode(self::MULTIANSWER_DELIMITER, $result->response);
+                    $studentanswerresponse = array_combine($studentanswerarray, $responsearr);
+
+                    foreach ($studentanswerresponse as $answer => $response) {
+                        // Add a table row containing the answer.
+                        $studentanswer = $this->format_answer($answer, $context, $result->studentanswerformat, $options);
+                        $table->data[] = array($studentanswer);
+                        // If the response exists, add a table row containing the response. If not, add en empty row.
+                        if (!empty(trim($response))) {
+                            $studentresponse = isset($result->responseformat) ?
+                                $this->format_response($response, $context, $result->responseformat, $options) : $response;
+                            $studentresponsecontent = html_writer::div('<em>' . get_string("response", "lesson") .
+                                '</em>: <br/>' . $studentresponse, $class);
+                            $table->data[] = array($studentresponsecontent);
+                        } else {
+                            $table->data[] = array('');
+                        }
+                    }
                 } else {
-                    $result->feedback .= $OUTPUT->box($result->response, $class);
+                    // Add a table row containing the answer.
+                    $studentanswer = $this->format_answer($result->studentanswer, $context, $result->studentanswerformat, $options);
+                    $table->data[] = array($studentanswer);
+                    // If the response exists, add a table row containing the response. If not, add en empty row.
+                    if (!empty(trim($result->response))) {
+                        $studentresponse = isset($result->responseformat) ?
+                            $this->format_response($result->response, $context, $result->responseformat,
+                                $result->answerid, $options) : $result->response;
+                        $studentresponsecontent = html_writer::div('<em>' . get_string("response", "lesson") .
+                            '</em>: <br/>' . $studentresponse, $class);
+                        $table->data[] = array($studentresponsecontent);
+                    } else {
+                        $table->data[] = array('');
+                    }
                 }
-                $result->feedback .= '</div>';
+
+                $result->feedback .= html_writer::table($table).'</div></div>';
             }
         }
-
         return $result;
+    }
+
+    /**
+     * Formats the answer. Override for custom formatting.
+     *
+     * @param string $answer
+     * @param context $context
+     * @param int $answerformat
+     * @return string Returns formatted string
+     */
+    public function format_answer($answer, $context, $answerformat, $options = []) {
+
+        if (is_object($options)) {
+            $options = (array) $options;
+        }
+
+        if (empty($options['context'])) {
+            $options['context'] = $context;
+        }
+
+        if (empty($options['para'])) {
+            $options['para'] = true;
+        }
+
+        return format_text($answer, $answerformat, $options);
+    }
+
+    /**
+     * Formats the response
+     *
+     * @param string $response
+     * @param context $context
+     * @param int $responseformat
+     * @param int $answerid
+     * @param stdClass $options
+     * @return string Returns formatted string
+     */
+    private function format_response($response, $context, $responseformat, $answerid, $options) {
+
+        $convertstudentresponse = file_rewrite_pluginfile_urls($response, 'pluginfile.php',
+            $context->id, 'mod_lesson', 'page_responses', $answerid);
+
+        return format_text($convertstudentresponse, $responseformat, $options);
     }
 
     /**
@@ -4249,7 +4525,7 @@ abstract class lesson_page extends lesson_base {
             if (count($answers) > 1) {
                 $answer = array_shift($answers);
                 foreach ($answers as $a) {
-                    $DB->delete_record('lesson_answers', array('id' => $a->id));
+                    $DB->delete_records('lesson_answers', array('id' => $a->id));
                 }
             } else if (count($answers) == 1) {
                 $answer = array_shift($answers);
@@ -4273,12 +4549,13 @@ abstract class lesson_page extends lesson_base {
                 $DB->insert_record("lesson_answers", $answer);
             }
         } else {
-            for ($i = 0; $i < $this->lesson->maxanswers; $i++) {
+            for ($i = 0; $i < count($properties->answer_editor); $i++) {
                 if (!array_key_exists($i, $this->answers)) {
                     $this->answers[$i] = new stdClass;
                     $this->answers[$i]->lessonid = $this->lesson->id;
                     $this->answers[$i]->pageid = $this->id;
                     $this->answers[$i]->timecreated = $this->timecreated;
+                    $this->answers[$i]->answer = null;
                 }
 
                 if (isset($properties->answer_editor[$i])) {
@@ -4291,6 +4568,9 @@ abstract class lesson_page extends lesson_base {
                         $this->answers[$i]->answer = $properties->answer_editor[$i];
                         $this->answers[$i]->answerformat = FORMAT_MOODLE;
                     }
+                } else {
+                    // If there is no data posted which means we want to reset the stored values.
+                    $this->answers[$i]->answer = null;
                 }
 
                 if (!empty($properties->response_editor[$i]) && is_array($properties->response_editor[$i])) {
@@ -4298,7 +4578,7 @@ abstract class lesson_page extends lesson_base {
                     $this->answers[$i]->responseformat = $properties->response_editor[$i]['format'];
                 }
 
-                if (isset($this->answers[$i]->answer) && $this->answers[$i]->answer != '') {
+                if ($this->answers[$i]->answer !== null && $this->answers[$i]->answer !== '') {
                     if (isset($properties->jumpto[$i])) {
                         $this->answers[$i]->jumpto = $properties->jumpto[$i];
                     }
@@ -4392,7 +4672,7 @@ abstract class lesson_page extends lesson_base {
 
         $answers = array();
 
-        for ($i = 0; $i < $this->lesson->maxanswers; $i++) {
+        for ($i = 0; $i < ($this->lesson->maxanswers + 1); $i++) {
             $answer = clone($newanswer);
 
             if (isset($properties->answer_editor[$i])) {
@@ -4427,8 +4707,6 @@ abstract class lesson_page extends lesson_base {
                             $properties->answer_editor[$i]);
                 }
                 $answers[$answer->id] = new lesson_page_answer($answer);
-            } else {
-                break;
             }
         }
 
@@ -4458,11 +4736,28 @@ abstract class lesson_page extends lesson_base {
         $result->response        = '';
         $result->newpageid       = 0;       // stay on the page
         $result->studentanswer   = '';      // use this to store student's answer(s) in order to display it on feedback page
+        $result->studentanswerformat = FORMAT_MOODLE;
         $result->userresponse    = null;
         $result->feedback        = '';
+        // Store data that was POSTd by a form. This is currently used to perform any logic after the 1st write to the db
+        // of the attempt.
+        $result->postdata        = false;
         $result->nodefaultresponse  = false; // Flag for redirecting when default feedback is turned off
         $result->inmediatejump = false; // Flag to detect when we should do a jump from the page without further processing.
         return $result;
+    }
+
+    /**
+     * Do any post persistence processing logic of an attempt. E.g. in cases where we need update file urls in an editor
+     * and we need to have the id of the stored attempt. Should be overridden in each individual child
+     * pagetype on a as required basis
+     *
+     * @param object $attempt The attempt corresponding to the db record
+     * @param object $result The result from the 'check_answer' method
+     * @return array False if nothing to be modified, updated $attempt and $result if update required.
+     */
+    public function on_after_write_attempt($attempt, $result) {
+        return [false, false];
     }
 
     /**
@@ -4604,7 +4899,7 @@ abstract class lesson_page extends lesson_base {
         $i = 1;
         foreach ($answers as $answer) {
             $cells = array();
-            $cells[] = "<span class=\"label\">".get_string("jump", "lesson")." $i<span>: ";
+            $cells[] = '<label>' . get_string('jump', 'lesson') . ' ' . $i . '</label>:';
             $cells[] = $this->get_jump_name($answer->jumpto);
             $table->data[] = new html_table_row($cells);
             if ($i === 1){
@@ -4716,6 +5011,17 @@ abstract class lesson_page extends lesson_base {
         $fs = get_file_storage();
         return $fs->get_area_files($this->lesson->context->id, 'mod_lesson', 'page_contents', $this->properties->id,
                                     'itemid, filepath, filename', $includedirs, $updatedsince);
+    }
+
+    /**
+     * Make updates to the form data if required.
+     *
+     * @since Moodle 3.7
+     * @param stdClass $data The form data to update.
+     * @return stdClass The updated fom data.
+     */
+    public function update_form_data(stdClass $data) : stdClass {
+        return $data;
     }
 }
 

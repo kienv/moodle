@@ -223,7 +223,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         try {
             self::resetAllData(true);
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
         }
         $this->assertEquals(1, $DB->get_field('user', 'confirmed', array('id'=>2)));
 
@@ -234,10 +234,10 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         try {
             self::resetAllData(true);
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
-            $this->assertContains('xx', $e->getMessage());
-            $this->assertContains('admin', $e->getMessage());
-            $this->assertContains('rolesactive', $e->getMessage());
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
+            $this->assertStringContainsString('xx', $e->getMessage());
+            $this->assertStringContainsString('admin', $e->getMessage());
+            $this->assertStringContainsString('rolesactive', $e->getMessage());
         }
         $this->assertFalse(isset($CFG->xx));
         $this->assertTrue(isset($CFG->admin));
@@ -276,7 +276,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         try {
             self::resetAllData(true);
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
             $this->assertEquals(1, $SITE->id);
             $this->assertSame($SITE, $COURSE);
             $this->assertSame($SITE, $COURSE);
@@ -287,7 +287,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         try {
             self::resetAllData(true);
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
             $this->assertEquals(0, $USER->id);
         }
     }
@@ -318,26 +318,46 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $this->assertFalse($DB->get_record('user', array('id'=>9999)));
     }
 
-    public function test_load_dataset() {
+    public function test_load_data_dataset_xml() {
         global $DB;
 
         $this->resetAfterTest();
 
-        $this->assertFalse($DB->record_exists('user', array('id'=>5)));
-        $this->assertFalse($DB->record_exists('user', array('id'=>7)));
+        $this->assertFalse($DB->record_exists('user', array('id' => 5)));
+        $this->assertFalse($DB->record_exists('user', array('id' => 7)));
         $dataset = $this->createXMLDataSet(__DIR__.'/fixtures/sample_dataset.xml');
+        $this->assertDebuggingCalled('createXMLDataSet() is deprecated. Please use dataset_from_files() instead.');
         $this->loadDataSet($dataset);
-        $this->assertTrue($DB->record_exists('user', array('id'=>5)));
-        $this->assertTrue($DB->record_exists('user', array('id'=>7)));
-        $user5 = $DB->get_record('user', array('id'=>5));
-        $user7 = $DB->get_record('user', array('id'=>7));
-        $this->assertSame('john.doe', $user5->username);
-        $this->assertSame('jane.doe', $user7->username);
+        $this->assertDebuggingCalled('loadDataSet() is deprecated. Please use dataset->to_database() instead.');
+        $this->assertTrue($DB->record_exists('user', array('id' => 5)));
+        $this->assertTrue($DB->record_exists('user', array('id' => 7)));
+        $user5 = $DB->get_record('user', array('id' => 5));
+        $user7 = $DB->get_record('user', array('id' => 7));
+        $this->assertSame('bozka.novakova', $user5->username);
+        $this->assertSame('pepa.novak', $user7->username);
 
-        $dataset = $this->createCsvDataSet(array('user'=>__DIR__.'/fixtures/sample_dataset.csv'));
+    }
+
+    public function test_load_dataset_csv() {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        $this->assertFalse($DB->record_exists('user', array('id' => 8)));
+        $this->assertFalse($DB->record_exists('user', array('id' => 9)));
+        $dataset = $this->createCsvDataSet(array('user' => __DIR__.'/fixtures/sample_dataset.csv'));
+        $this->assertDebuggingCalled('createCsvDataSet() is deprecated. Please use dataset_from_files() instead.');
         $this->loadDataSet($dataset);
-        $this->assertEquals(8, $DB->get_field('user', 'id', array('username'=>'pepa.novak')));
-        $this->assertEquals(9, $DB->get_field('user', 'id', array('username'=>'bozka.novakova')));
+        $this->assertDebuggingCalled('loadDataSet() is deprecated. Please use dataset->to_database() instead.');
+        $this->assertEquals(5, $DB->get_field('user', 'id', array('username' => 'bozka.novakova')));
+        $this->assertEquals(7, $DB->get_field('user', 'id', array('username' => 'pepa.novak')));
+
+    }
+
+    public function test_load_dataset_array() {
+        global $DB;
+
+        $this->resetAfterTest();
 
         $data = array(
             'user' => array(
@@ -346,21 +366,28 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
                 array('low.secret', 'low@example.com'),
             ),
         );
+
+        $this->assertFalse($DB->record_exists('user', array('email' => 'top@example.com')));
+        $this->assertFalse($DB->record_exists('user', array('email' => 'low@example.com')));
         $dataset = $this->createArrayDataSet($data);
+        $this->assertDebuggingCalled('createArrayDataSet() is deprecated. Please use dataset_from_array() instead.');
         $this->loadDataSet($dataset);
-        $this->assertTrue($DB->record_exists('user', array('email'=>'top@example.com')));
-        $this->assertTrue($DB->record_exists('user', array('email'=>'low@example.com')));
+        $this->assertDebuggingCalled('loadDataSet() is deprecated. Please use dataset->to_database() instead.');
+        $this->assertTrue($DB->record_exists('user', array('email' => 'top@example.com')));
+        $this->assertTrue($DB->record_exists('user', array('email' => 'low@example.com')));
 
         $data = array(
             'user' => array(
-                array('username'=>'noidea', 'email'=>'noidea@example.com'),
-                array('username'=>'onemore', 'email'=>'onemore@example.com'),
+                array('username' => 'noidea', 'email' => 'noidea@example.com'),
+                array('username' => 'onemore', 'email' => 'onemore@example.com'),
             ),
         );
         $dataset = $this->createArrayDataSet($data);
+        $this->assertDebuggingCalled('createArrayDataSet() is deprecated. Please use dataset_from_array() instead.');
         $this->loadDataSet($dataset);
-        $this->assertTrue($DB->record_exists('user', array('username'=>'noidea')));
-        $this->assertTrue($DB->record_exists('user', array('username'=>'onemore')));
+        $this->assertDebuggingCalled('loadDataSet() is deprecated. Please use dataset->to_database() instead.');
+        $this->assertTrue($DB->record_exists('user', array('username' => 'noidea')));
+        $this->assertTrue($DB->record_exists('user', array('username' => 'onemore')));
     }
 
     public function test_assert_time_current() {
@@ -377,7 +404,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
             $this->assertTimeCurrent(time()+10);
             $this->fail('Failed assert expected');
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_ExpectationFailedException', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\ExpectationFailedException', $e);
         }
 
         try {
@@ -385,7 +412,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
             $this->assertTimeCurrent(time()-10);
             $this->fail('Failed assert expected');
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_ExpectationFailedException', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\ExpectationFailedException', $e);
         }
     }
 
@@ -467,7 +494,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $this->assertGreaterThanOrEqual($mid1, $mid2);
 
         $messages = $sink->get_messages();
-        $this->assertInternalType('array', $messages);
+        $this->assertIsArray($messages);
         $this->assertCount(2, $messages);
         $this->assertEquals($mid1, $messages[0]->id);
         $this->assertEquals($message1->userto->id, $messages[0]->useridto);
@@ -481,18 +508,18 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         // Test resetting.
         $sink->clear();
         $messages = $sink->get_messages();
-        $this->assertInternalType('array', $messages);
+        $this->assertIsArray($messages);
         $this->assertCount(0, $messages);
 
         message_send($message1);
         $messages = $sink->get_messages();
-        $this->assertInternalType('array', $messages);
+        $this->assertIsArray($messages);
         $this->assertCount(1, $messages);
 
         // Test closing.
         $sink->close();
         $messages = $sink->get_messages();
-        $this->assertInternalType('array', $messages);
+        $this->assertIsArray($messages);
         $this->assertCount(1, $messages, 'Messages in sink are supposed to stay there after close');
 
         // Test debugging is enabled again.
@@ -516,21 +543,16 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         $message3->smallmessage      = 'small message';
         $message3->notification      = 0;
 
-        try {
-            message_send($message3);
-            $this->fail('coding expcetion expected if invalid component specified');
-        } catch (moodle_exception $e) {
-            $this->assertInstanceOf('coding_exception', $e);
-        }
+        $this->assertFalse(message_send($message3));
+        $this->assertDebuggingCalled('Attempt to send msg from a provider xxxx_yyyyy/instantmessage '.
+            'that is inactive or not allowed for the user id='.$user1->id);
 
         $message3->component = 'moodle';
         $message3->name      = 'yyyyyy';
-        try {
-            message_send($message3);
-            $this->fail('coding expcetion expected if invalid name specified');
-        } catch (moodle_exception $e) {
-            $this->assertInstanceOf('coding_exception', $e);
-        }
+
+        $this->assertFalse(message_send($message3));
+        $this->assertDebuggingCalled('Attempt to send msg from a provider moodle/yyyyyy '.
+            'that is inactive or not allowed for the user id='.$user1->id);
 
         message_send($message1);
         $this->assertEquals(1, $sink->count());
@@ -544,6 +566,10 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
      * @depends test_message_redirection
      */
     public function test_message_redirection_noreset($sink) {
+        if ($this->isInIsolation()) {
+            $this->markTestSkipped('State cannot be carried over between tests in isolated tests');
+        }
+
         $this->preventResetByRollback(); // Messaging is not compatible with transactions...
         $this->resetAfterTest();
 
@@ -600,19 +626,19 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         try {
             $this->setTimezone('Pacific/Auckland', '');
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
         }
 
         try {
             $this->setTimezone('Pacific/Auckland', 'xxxx');
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
         }
 
         try {
             $this->setTimezone('Pacific/Auckland', null);
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
         }
 
     }
@@ -637,7 +663,7 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         try {
             self::resetAllData(true);
         } catch (Exception $e) {
-            $this->assertInstanceOf('PHPUnit_Framework_Error_Warning', $e);
+            $this->assertInstanceOf('PHPUnit\Framework\Error\Warning', $e);
         }
 
         if ($CFG->ostype === 'WINDOWS') {
@@ -661,5 +687,24 @@ class core_phpunit_advanced_testcase extends advanced_testcase {
         } else {
             $this->assertSame('en_AU.UTF-8', setlocale(LC_TIME, 0));
         }
+    }
+
+    /**
+     * This test sets a user agent and makes sure that it is cleared when the test is reset.
+     */
+    public function test_it_resets_useragent_after_test() {
+        $this->resetAfterTest();
+        $fakeagent = 'New user agent set.';
+
+        // Sanity check: it should not be set when test begins.
+        self::assertFalse(core_useragent::get_user_agent_string(), 'It should not be set at first.');
+
+        // Set a fake useragent and check it was set properly.
+        core_useragent::instance(true, $fakeagent);
+        self::assertSame($fakeagent, core_useragent::get_user_agent_string(), 'It should be the forced agent.');
+
+        // Reset test data and ansure the useragent was cleaned.
+        self::resetAllData(false);
+        self::assertFalse(core_useragent::get_user_agent_string(), 'It should not be set again, data was reset.');
     }
 }

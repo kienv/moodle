@@ -51,7 +51,7 @@ trait templatable_form_element {
         $context = [];
 
         // Not all elements have all of these attributes - but they are common enough to be valid for a few.
-        $standardattributes = ['id', 'name', 'label', 'multiple', 'checked', 'error', 'size', 'value'];
+        $standardattributes = ['id', 'name', 'label', 'multiple', 'checked', 'error', 'size', 'value', 'type'];
         $standardproperties = ['helpbutton', 'hiddenLabel'];
 
         // Standard attributes.
@@ -81,6 +81,9 @@ trait templatable_form_element {
         $context['extraclasses'] = $extraclasses;
         $context['type'] = $this->getType();
         $context['attributes'] = implode(' ', $otherattributes);
+        $context['emptylabel'] = ($this->getLabel() === '');
+        $context['iderror'] = preg_replace('/_id_/', '_id_error_', $context['id']);
+        $context['iderror'] = preg_replace('/^id_/', 'id_error_', $context['iderror']);
 
         // Elements with multiple values need array syntax.
         if ($this->getAttribute('multiple')) {

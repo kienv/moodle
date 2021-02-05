@@ -591,7 +591,7 @@ class repository_dropbox extends repository {
     public static function get_oauth2callbackurl() {
         global $CFG;
 
-        return new moodle_url($CFG->httpswwwroot . '/admin/oauth2callback.php');
+        return new moodle_url('/admin/oauth2callback.php');
     }
 
     /**
@@ -662,9 +662,7 @@ class repository_dropbox extends repository {
                     ]);
                 $info = $c->get_info();
                 if ($result === true && isset($info['http_code']) && $info['http_code'] == 200) {
-                    $fs = get_file_storage();
-                    list($contenthash, $filesize, ) = $fs->add_file_to_pool($saveas);
-                    $file->set_synchronized($contenthash, $filesize);
+                    $file->set_synchronised_content_from_file($saveas);
                     return true;
                 }
             } catch (Exception $e) {
@@ -704,6 +702,12 @@ class repository_dropbox extends repository {
                 // We only use the consistent parts of the file, folder, and metadata.
                 $entrydata = $entrydata->metadata;
             }
+
+            // Due to a change in the api, the actual content is in a nested metadata tree.
+            if ($entrydata->{".tag"} == "metadata" && isset($entrydata->metadata)) {
+                $entrydata = $entrydata->metadata;
+            }
+
             if ($entrydata->{".tag"} === "folder") {
                 $dirslist[] = [
                         'title'             => $entrydata->name,
@@ -807,15 +811,5 @@ class repository_dropbox extends repository {
             $this->cachelimit = (int) get_config('dropbox', 'dropbox_cachelimit');
         }
         return $this->cachelimit;
-    }
-}
-
-/**
- * Dropbox plugin cron task.
- */
-function repository_dropbox_cron() {
-    $instances = repository::get_instances(array('type'=>'dropbox'));
-    foreach ($instances as $instance) {
-        $instance->cron();
     }
 }

@@ -125,7 +125,9 @@ class mod_data_external extends external_api {
                     }
                 }
                 $exporter = new database_summary_exporter($database, array('context' => $context));
-                $arrdatabases[] = $exporter->export($PAGE->get_renderer('core'));
+                $data = $exporter->export($PAGE->get_renderer('core'));
+                $data->name = external_format_string($data->name, $context);
+                $arrdatabases[] = $data;
             }
         }
 
@@ -275,10 +277,6 @@ class mod_data_external extends external_api {
             // Check to see if groups are being used here.
             if ($groupmode) {
                 $groupid = groups_get_activity_group($cm);
-                // Determine is the group is visible to user (this is particullary for the group 0 -> all groups).
-                if (!groups_group_visible($groupid, $course, $cm)) {
-                    throw new moodle_exception('notingroup');
-                }
             } else {
                 $groupid = 0;
             }
@@ -399,11 +397,8 @@ class mod_data_external extends external_api {
         } else {
             // Check to see if groups are being used here.
             if ($groupmode = groups_get_activity_groupmode($cm)) {
+                // We don't need to validate a possible groupid = 0 since it would be handled by data_search_entries.
                 $groupid = groups_get_activity_group($cm);
-                // Determine is the group is visible to user (this is particullary for the group 0 -> all groups).
-                if (!groups_group_visible($groupid, $course, $cm)) {
-                    throw new moodle_exception('notingroup');
-                }
             } else {
                 $groupid = 0;
             }
@@ -520,7 +515,7 @@ class mod_data_external extends external_api {
         $canmanageentries = has_capability('mod/data:manageentries', $context);
         data_require_time_available($database, $canmanageentries);
 
-        if ($record->groupid !== 0) {
+        if ($record->groupid != 0) {
             if (!groups_group_visible($record->groupid, $course, $cm)) {
                 throw new moodle_exception('notingroup');
             }
@@ -542,6 +537,7 @@ class mod_data_external extends external_api {
 
         $result = array(
             'entry' => $entry,
+            'ratinginfo' => \core_rating\external\util::get_rating_info($database, $context, 'mod_data', 'entry', array($record)),
             'warnings' => $warnings
         );
         // Check if we should return the entry rendered.
@@ -564,6 +560,7 @@ class mod_data_external extends external_api {
             array(
                 'entry' => record_exporter::get_read_structure(),
                 'entryviewcontents' => new external_value(PARAM_RAW, 'The entry as is rendered in the site.', VALUE_OPTIONAL),
+                'ratinginfo' => \core_rating\external\util::external_ratings_structure(),
                 'warnings' => new external_warnings()
             )
         );
@@ -596,7 +593,7 @@ class mod_data_external extends external_api {
 
         $params = array('databaseid' => $databaseid);
         $params = self::validate_parameters(self::get_fields_parameters(), $params);
-        $warnings = array();
+        $fields = $warnings = array();
 
         list($database, $course, $cm, $context) = self::validate_database($params['databaseid']);
 
@@ -726,11 +723,8 @@ class mod_data_external extends external_api {
         } else {
             // Check to see if groups are being used here.
             if ($groupmode = groups_get_activity_groupmode($cm)) {
+                // We don't need to validate a possible groupid = 0 since it would be handled by data_search_entries.
                 $groupid = groups_get_activity_group($cm);
-                // Determine is the group is visible to user (this is particullary for the group 0 -> all groups).
-                if (!groups_group_visible($groupid, $course, $cm)) {
-                    throw new moodle_exception('notingroup');
-                }
             } else {
                 $groupid = 0;
             }
@@ -807,7 +801,9 @@ class mod_data_external extends external_api {
                 'entries' => new external_multiple_structure(
                     record_exporter::get_read_structure()
                 ),
-                'totalcount' => new external_value(PARAM_INT, 'Total count of records.'),
+                'totalcount' => new external_value(PARAM_INT, 'Total count of records returned by the search.'),
+                'maxcount' => new external_value(PARAM_INT, 'Total count of records that the user could see in the database
+                    (if all the search criterias were removed).', VALUE_OPTIONAL),
                 'listviewcontents' => new external_value(PARAM_RAW, 'The list view contents as is rendered in the site.',
                                                             VALUE_OPTIONAL),
                 'warnings' => new external_warnings()
@@ -986,25 +982,17 @@ class mod_data_external extends external_api {
         data_require_time_available($database, null, $context);
 
         $groupmode = groups_get_activity_groupmode($cm);
-        if (!empty($params['groupid'])) {
-            $groupid = $params['groupid'];
-            // Determine is the group is visible to user.
-            if (!groups_group_visible($groupid, $course, $cm)) {
-                throw new moodle_exception('notingroup');
-            }
-        } else {
+        // Determine default group.
+        if (empty($params['groupid'])) {
             // Check to see if groups are being used here.
             if ($groupmode) {
                 $groupid = groups_get_activity_group($cm);
-                // Determine is the group is visible to user (this is particullary for the group 0 -> all groups).
-                if (!groups_group_visible($groupid, $course, $cm)) {
-                    throw new moodle_exception('notingroup');
-                }
             } else {
                 $groupid = 0;
             }
         }
 
+        // Group is validated inside the function.
         if (!data_user_can_add_entry($database, $groupid, $groupmode, $context)) {
             throw new moodle_exception('noaccess', 'data');
         }

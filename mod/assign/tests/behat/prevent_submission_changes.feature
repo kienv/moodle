@@ -45,7 +45,7 @@ Feature: Prevent or allow assignment submission changes
     And I am on "Course 1" course homepage
     And I follow "Test assignment name"
     When I navigate to "View all submissions" in current page administration
-    And I click on "Edit" "link" in the "Student 1" "table_row"
+    And I open the action menu in "Student 1" "table_row"
     And I follow "Prevent submission changes"
     Then I should see "Submission changes not allowed"
     And I log out
@@ -59,7 +59,7 @@ Feature: Prevent or allow assignment submission changes
     And I am on "Course 1" course homepage
     And I follow "Test assignment name"
     And I navigate to "View all submissions" in current page administration
-    And I click on "Edit" "link" in the "Student 1" "table_row"
+    And I open the action menu in "Student 1" "table_row"
     And I follow "Allow submission changes"
     And I should not see "Submission changes not allowed"
     And I log out
@@ -125,4 +125,3 @@ Feature: Prevent or allow assignment submission changes
     And I set the following fields to these values:
       | Online text | I'm the student2 submission and he/she edited me |
     And I press "Save changes"
-    And I log out

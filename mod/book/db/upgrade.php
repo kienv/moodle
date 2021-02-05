@@ -34,35 +34,26 @@ function xmldb_book_upgrade($oldversion) {
 
     $dbman = $DB->get_manager();
 
-    // Moodle v2.8.0 release upgrade line.
+    // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
-    if ($oldversion < 2014111800) {
+    // Automatically generated Moodle v3.7.0 release upgrade line.
+    // Put any upgrade step following this.
 
-        // Define field navstyle to be added to book.
-        $table = new xmldb_table('book');
-        $field = new xmldb_field('navstyle', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '1', 'numbering');
+    // Automatically generated Moodle v3.8.0 release upgrade line.
+    // Put any upgrade step following this.
 
-        // Conditionally launch add field navstyle.
-        if (!$dbman->field_exists($table, $field)) {
-            $dbman->add_field($table, $field);
+    // Automatically generated Moodle v3.9.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    if ($oldversion < 2021052501) {
+        $table = new xmldb_table('book_chapters');
+        $index = new xmldb_index('bookid', XMLDB_INDEX_NOTUNIQUE, ['bookid']);
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
         }
-
-        // Book savepoint reached.
-        upgrade_mod_savepoint(true, 2014111800, 'book');
+        upgrade_mod_savepoint(true, 2021052501, 'book');
     }
-
-    // Moodle v2.9.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Moodle v3.0.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Moodle v3.1.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Automatically generated Moodle v3.2.0 release upgrade line.
-    // Put any upgrade step following this.
 
     return true;
 }

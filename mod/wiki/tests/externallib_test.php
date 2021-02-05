@@ -45,7 +45,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
     /**
      * Set up for every test
      */
-    public function setUp() {
+    public function setUp(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -69,7 +69,8 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $this->getDataGenerator()->enrol_user($this->teacher->id, $this->course->id, $this->teacherrole->id, 'manual');
 
         // Create first pages.
-        $this->firstpage = $this->getDataGenerator()->get_plugin_generator('mod_wiki')->create_first_page($this->wiki);
+        $this->firstpage = $this->getDataGenerator()->get_plugin_generator('mod_wiki')->create_first_page($this->wiki,
+            array('tags' => array('Cats', 'Dogs')));
     }
 
     /**
@@ -255,17 +256,27 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         // Now, prohibit capabilities.
         $this->setUser($this->student);
         $contextcourse1 = context_course::instance($this->course->id);
+
+        // Default student role allows to view wiki and create pages.
+        $wikis = mod_wiki_external::get_wikis_by_courses(array($this->course->id));
+        $wikis = external_api::clean_returnvalue(mod_wiki_external::get_wikis_by_courses_returns(), $wikis);
+        $this->assertEquals('Test wiki 1', $wikis['wikis'][0]['intro']);
+        $this->assertEquals(1, $wikis['wikis'][0]['cancreatepages']);
+
         // Prohibit capability = mod:wiki:viewpage on Course1 for students.
-        assign_capability('mod/wiki:viewpage', CAP_PROHIBIT, $this->studentrole->id, $contextcourse1->id);
+        assign_capability('mod/wiki:viewpage', CAP_PROHIBIT, $this->studentrole->id, $contextcourse1->id, true);
         accesslib_clear_all_caches_for_unit_testing();
+        course_modinfo::clear_instance_cache(null);
 
         $wikis = mod_wiki_external::get_wikis_by_courses(array($this->course->id));
         $wikis = external_api::clean_returnvalue(mod_wiki_external::get_wikis_by_courses_returns(), $wikis);
-        $this->assertFalse(isset($wikis['wikis'][0]['intro']));
+        $this->assertEquals(0, count($wikis['wikis']));
 
         // Prohibit capability = mod:wiki:createpage on Course1 for students.
+        assign_capability('mod/wiki:viewpage', CAP_ALLOW, $this->studentrole->id, $contextcourse1->id, true);
         assign_capability('mod/wiki:createpage', CAP_PROHIBIT, $this->studentrole->id, $contextcourse1->id);
         accesslib_clear_all_caches_for_unit_testing();
+        course_modinfo::clear_instance_cache(null);
 
         $wikis = mod_wiki_external::get_wikis_by_courses(array($this->course->id));
         $wikis = external_api::clean_returnvalue(mod_wiki_external::get_wikis_by_courses_returns(), $wikis);
@@ -448,30 +459,26 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
 
     /**
      * Test get_subwiki_pages using an invalid wiki instance.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_invalid_instance() {
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages(0);
     }
 
     /**
      * Test get_subwiki_pages using a user not enrolled in the course.
-     *
-     * @expectedException require_login_exception
      */
     public function test_get_subwiki_pages_unenrolled_user() {
         // Create and use the user.
         $usernotenrolled = self::getDataGenerator()->create_user();
         $this->setUser($usernotenrolled);
 
+        $this->expectException(require_login_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wiki->id);
     }
 
     /**
      * Test get_subwiki_pages using a hidden wiki as student.
-     *
-     * @expectedException require_login_exception
      */
     public function test_get_subwiki_pages_hidden_wiki_as_student() {
         // Create a hidden wiki and try to get the list of pages.
@@ -479,13 +486,12 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
                             array('course' => $this->course->id, 'visible' => false));
 
         $this->setUser($this->student);
+        $this->expectException(require_login_exception::class);
         mod_wiki_external::get_subwiki_pages($hiddenwiki->id);
     }
 
     /**
      * Test get_subwiki_pages without the viewpage capability.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_without_viewpage_capability() {
         // Prohibit capability = mod/wiki:viewpage on the course for students.
@@ -494,38 +500,35 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         accesslib_clear_all_caches_for_unit_testing();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wiki->id);
     }
 
     /**
      * Test get_subwiki_pages using an invalid userid.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_invalid_userid() {
         // Create an individual wiki.
         $indwiki = $this->getDataGenerator()->create_module('wiki',
                                 array('course' => $this->course->id, 'wikimode' => 'individual'));
 
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($indwiki->id, 0, -10);
     }
 
     /**
      * Test get_subwiki_pages using an invalid groupid.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_invalid_groupid() {
         // Create testing data.
         $this->create_collaborative_wikis_with_groups();
 
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wikisep->id, -111);
     }
 
     /**
      * Test get_subwiki_pages, check that a student can't see another user pages in an individual wiki without groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_individual_student_see_other_user() {
         // Create an individual wiki.
@@ -533,62 +536,59 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
                                 array('course' => $this->course->id, 'wikimode' => 'individual'));
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($indwiki->id, 0, $this->teacher->id);
     }
 
     /**
      * Test get_subwiki_pages, check that a student can't get the pages from another group in
      * a collaborative wiki using separate groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_collaborative_separate_groups_student_see_other_group() {
         // Create testing data.
         $this->create_collaborative_wikis_with_groups();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wikisep->id, $this->group2->id);
     }
 
     /**
      * Test get_subwiki_pages, check that a student can't get the pages from another group in
      * an individual wiki using separate groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_individual_separate_groups_student_see_other_group() {
         // Create testing data.
         $this->create_individual_wikis_with_groups();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wikisepind->id, $this->group2->id, $this->teacher->id);
     }
 
     /**
      * Test get_subwiki_pages, check that a student can't get the pages from all participants in
      * a collaborative wiki using separate groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_collaborative_separate_groups_student_see_all_participants() {
         // Create testing data.
         $this->create_collaborative_wikis_with_groups();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wikisep->id, 0);
     }
 
     /**
      * Test get_subwiki_pages, check that a student can't get the pages from all participants in
      * an individual wiki using separate groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_pages_individual_separate_groups_student_see_all_participants() {
         // Create testing data.
         $this->create_individual_wikis_with_groups();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_pages($this->wikisepind->id, 0, $this->teacher->id);
     }
 
@@ -606,6 +606,10 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedfirstpage['caneditpage'] = true; // No groups and students have 'mod/wiki:editpage' capability.
         $expectedfirstpage['firstpage'] = true;
         $expectedfirstpage['contentformat'] = 1;
+        $expectedfirstpage['tags'] = \core_tag\external\util::get_item_tags('mod_wiki', 'wiki_pages', $this->firstpage->id);
+        // Cast to expected.
+        $expectedfirstpage['tags'][0]['isstandard'] = (bool) $expectedfirstpage['tags'][0]['isstandard'];
+        $expectedfirstpage['tags'][1]['isstandard'] = (bool) $expectedfirstpage['tags'][1]['isstandard'];
         $expectedpages[] = $expectedfirstpage;
 
         $result = mod_wiki_external::get_subwiki_pages($this->wiki->id);
@@ -630,6 +634,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectednewpage['caneditpage'] = true; // No groups and students have 'mod/wiki:editpage' capability.
         $expectednewpage['firstpage'] = false;
         $expectednewpage['contentformat'] = 1;
+        $expectednewpage['tags'] = array();
         array_unshift($expectedpages, $expectednewpage); // Add page to the beginning since it orders by title by default.
 
         $result = mod_wiki_external::get_subwiki_pages($this->wiki->id);
@@ -682,6 +687,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedteacherpage['caneditpage'] = true;
         $expectedteacherpage['firstpage'] = true;
         $expectedteacherpage['contentformat'] = 1;
+        $expectedteacherpage['tags'] = array();
         $expectedpages = array($expectedteacherpage);
 
         $result = mod_wiki_external::get_subwiki_pages($indwiki->id, 0, $this->teacher->id);
@@ -693,6 +699,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedstudentpage['caneditpage'] = true;
         $expectedstudentpage['firstpage'] = true;
         $expectedstudentpage['contentformat'] = 1;
+        $expectedstudentpage['tags'] = array();
         $expectedpages = array($expectedstudentpage);
 
         $result = mod_wiki_external::get_subwiki_pages($indwiki->id, 0, $this->student->id);
@@ -728,6 +735,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = true; // User belongs to group and has 'mod/wiki:editpage' capability.
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikisep->id, $this->group1->id);
@@ -750,6 +758,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = true;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikisep->id, 0);
@@ -773,6 +782,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = true; // User belongs to group and has 'mod/wiki:editpage' capability.
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikivis->id, $this->group1->id);
@@ -784,6 +794,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = false; // User doesn't belong to group so he can't edit the page.
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikivis->id, $this->group2->id);
@@ -795,6 +806,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = false;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikivis->id, 0);
@@ -817,6 +829,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = true;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikisepind->id, $this->group1->id, $this->student->id);
@@ -840,6 +853,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = false;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikisepind->id, $this->group1->id, $this->student2->id);
@@ -862,6 +876,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = true;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikivisind->id, $this->group1->id, $this->student->id);
@@ -873,6 +888,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = false;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikivisind->id, $this->group2->id, $this->teacher->id);
@@ -884,6 +900,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['caneditpage'] = false;
         $expectedpage['firstpage'] = true;
         $expectedpage['contentformat'] = 1;
+        $expectedpage['tags'] = array();
         $expectedpages = array($expectedpage);
 
         $result = mod_wiki_external::get_subwiki_pages($this->wikivisind->id, 0, $this->teacher->id);
@@ -893,30 +910,26 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
 
     /**
      * Test get_page_contents using an invalid pageid.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_page_contents_invalid_pageid() {
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_page_contents(0);
     }
 
     /**
      * Test get_page_contents using a user not enrolled in the course.
-     *
-     * @expectedException require_login_exception
      */
     public function test_get_page_contents_unenrolled_user() {
         // Create and use the user.
         $usernotenrolled = self::getDataGenerator()->create_user();
         $this->setUser($usernotenrolled);
 
+        $this->expectException(require_login_exception::class);
         mod_wiki_external::get_page_contents($this->firstpage->id);
     }
 
     /**
      * Test get_page_contents using a hidden wiki as student.
-     *
-     * @expectedException require_login_exception
      */
     public function test_get_page_contents_hidden_wiki_as_student() {
         // Create a hidden wiki and try to get a page contents.
@@ -925,13 +938,12 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $hiddenpage = $this->getDataGenerator()->get_plugin_generator('mod_wiki')->create_page($hiddenwiki);
 
         $this->setUser($this->student);
+        $this->expectException(require_login_exception::class);
         mod_wiki_external::get_page_contents($hiddenpage->id);
     }
 
     /**
      * Test get_page_contents without the viewpage capability.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_page_contents_without_viewpage_capability() {
         // Prohibit capability = mod/wiki:viewpage on the course for students.
@@ -940,20 +952,20 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         accesslib_clear_all_caches_for_unit_testing();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_page_contents($this->firstpage->id);
     }
 
     /**
      * Test get_page_contents, check that a student can't get a page from another group when
      * using separate groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_page_contents_separate_groups_student_see_other_group() {
         // Create testing data.
         $this->create_individual_wikis_with_groups();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_page_contents($this->fpsepg2indt->id);
     }
 
@@ -977,8 +989,12 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
             'cachedcontent' => $this->firstpage->cachedcontent,
             'contentformat' => 1,
             'caneditpage' => true,
-            'version' => 1
+            'version' => 1,
+            'tags' => \core_tag\external\util::get_item_tags('mod_wiki', 'wiki_pages', $this->firstpage->id),
         );
+        // Cast to expected.
+        $expectedpage['tags'][0]['isstandard'] = (bool) $expectedpage['tags'][0]['isstandard'];
+        $expectedpage['tags'][1]['isstandard'] = (bool) $expectedpage['tags'][1]['isstandard'];
 
         $result = mod_wiki_external::get_page_contents($this->firstpage->id);
         $result = external_api::clean_returnvalue(mod_wiki_external::get_page_contents_returns(), $result);
@@ -990,6 +1006,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $expectedpage['id'] = $newpage->id;
         $expectedpage['title'] = $newpage->title;
         $expectedpage['cachedcontent'] = $newpage->cachedcontent;
+        $expectedpage['tags'] = array();
 
         $result = mod_wiki_external::get_page_contents($newpage->id);
         $result = external_api::clean_returnvalue(mod_wiki_external::get_page_contents_returns(), $result);
@@ -1018,7 +1035,8 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
             'cachedcontent' => $this->fpsepg1indstu->cachedcontent,
             'contentformat' => 1,
             'caneditpage' => true,
-            'version' => 1
+            'version' => 1,
+            'tags' => array(),
         );
 
         $result = mod_wiki_external::get_page_contents($this->fpsepg1indstu->id);
@@ -1045,14 +1063,13 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
     /**
      * Test get_subwiki_files, check that a student can't get files from another group's subwiki when
      * using separate groups.
-     *
-     * @expectedException moodle_exception
      */
     public function test_get_subwiki_files_separate_groups_student_see_other_group() {
         // Create testing data.
         $this->create_collaborative_wikis_with_groups();
 
         $this->setUser($this->student);
+        $this->expectException(moodle_exception::class);
         mod_wiki_external::get_subwiki_files($this->wikisep->id, $this->group2->id);
     }
 
@@ -1267,7 +1284,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         // Test on existing subwiki.
         $result = mod_wiki_external::new_page($pagetitle, $pagecontent, 'html', $this->fpsepg1indstu->subwikiid);
         $result = external_api::clean_returnvalue(mod_wiki_external::new_page_returns(), $result);
-        $this->assertInternalType('int', $result['pageid']);
+        $this->assertIsInt($result['pageid']);
 
         $version = wiki_get_current_version($result['pageid']);
         $this->assertEquals($pagecontent, $version->content);
@@ -1289,7 +1306,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
         $result = mod_wiki_external::new_page($pagetitle, $pagecontent, 'html', null, $this->wikisepind->id, $this->student->id,
             $this->group2->id);
         $result = external_api::clean_returnvalue(mod_wiki_external::new_page_returns(), $result);
-        $this->assertInternalType('int', $result['pageid']);
+        $this->assertIsInt($result['pageid']);
 
         $version = wiki_get_current_version($result['pageid']);
         $this->assertEquals($pagecontent, $version->content);
@@ -1342,7 +1359,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
 
         $result = mod_wiki_external::edit_page($newpage->id, $newpagecontent);
         $result = external_api::clean_returnvalue(mod_wiki_external::edit_page_returns(), $result);
-        $this->assertInternalType('int', $result['pageid']);
+        $this->assertIsInt($result['pageid']);
 
         $version = wiki_get_current_version($result['pageid']);
         $this->assertEquals($newpagecontent, $version->content);
@@ -1353,7 +1370,7 @@ class mod_wiki_external_testcase extends externallib_advanced_testcase {
 
         $result = mod_wiki_external::edit_page($newpage->id, $newsectioncontent, $section);
         $result = external_api::clean_returnvalue(mod_wiki_external::edit_page_returns(), $result);
-        $this->assertInternalType('int', $result['pageid']);
+        $this->assertIsInt($result['pageid']);
 
         $expected = $sectioncontent . $newsectioncontent;
 

@@ -202,6 +202,17 @@ class user_picture implements renderable {
     public $visibletoscreenreaders = true;
 
     /**
+     * @var bool Whether to include the fullname in the user picture link.
+     */
+    public $includefullname = false;
+
+    /**
+     * @var mixed Include user authentication token. True indicates to generate a token for current user, and integer value
+     * indicates to generate a token for the user whose id is the value indicated.
+     */
+    public $includetoken = false;
+
+    /**
      * User picture constructor.
      *
      * @param stdClass $user user record with at least id, picture, imagealt, firstname and lastname set.
@@ -217,7 +228,7 @@ class user_picture implements renderable {
         // only touch the DB if we are missing data and complain loudly...
         $needrec = false;
         foreach (self::$fields as $field) {
-            if (!array_key_exists($field, $user)) {
+            if (!property_exists($user, $field)) {
                 $needrec = true;
                 debugging('Missing '.$field.' property in $user object, this is a performance problem that needs to be fixed by a developer. '
                           .'Please use user_picture::fields() to get the full list of required fields.', DEBUG_DEVELOPER);
@@ -398,7 +409,8 @@ class user_picture implements renderable {
                 $path .= $page->theme->name.'/';
             }
             // Set the image URL to the URL for the uploaded file and return.
-            $url = moodle_url::make_pluginfile_url($contextid, 'user', 'icon', NULL, $path, $filename);
+            $url = moodle_url::make_pluginfile_url(
+                    $contextid, 'user', 'icon', null, $path, $filename, false, $this->includetoken);
             $url->param('rev', $this->user->picture);
             return $url;
         }
@@ -427,7 +439,6 @@ class user_picture implements renderable {
             // If the currently requested page is https then we'll return an
             // https gravatar page.
             if (is_https()) {
-                $gravatardefault = str_replace($CFG->wwwroot, $CFG->httpswwwroot, $gravatardefault); // Replace by secure url.
                 return new moodle_url("https://secure.gravatar.com/avatar/{$md5}", array('s' => $size, 'd' => $gravatardefault));
             } else {
                 return new moodle_url("http://www.gravatar.com/avatar/{$md5}", array('s' => $size, 'd' => $gravatardefault));
@@ -515,12 +526,19 @@ class help_icon implements renderable, templatable {
         $data->icon = (new pix_icon('help', $alt, 'core', ['class' => 'iconhelp']))->export_for_template($output);
         $data->linktext = $this->linktext;
         $data->title = get_string('helpprefix2', '', trim($title, ". \t"));
-        $data->url = (new moodle_url($CFG->httpswwwroot . '/help.php', [
+
+        $options = [
             'component' => $this->component,
             'identifier' => $this->identifier,
             'lang' => current_language()
-        ]))->out(false);
+        ];
 
+        // Debugging feature lets you display string identifier and component.
+        if (isset($CFG->debugstringids) && $CFG->debugstringids && optional_param('strings', 0, PARAM_INT)) {
+            $options['strings'] = 1;
+        }
+
+        $data->url = (new moodle_url('/help.php', $options))->out(false);
         $data->ltr = !right_to_left();
         return $data;
     }
@@ -684,6 +702,11 @@ class pix_icon implements renderable, templatable {
             // and some browsers might overwrite it with an empty title.
             unset($this->attributes['title']);
         }
+
+        // Hide icons from screen readers that have no alt.
+        if (empty($this->attributes['alt'])) {
+            $this->attributes['aria-hidden'] = 'true';
+        }
     }
 
     /**
@@ -845,16 +868,23 @@ class single_button implements renderable {
     public $actionid;
 
     /**
+     * @var array
+     */
+    protected $attributes = [];
+
+    /**
      * Constructor
      * @param moodle_url $url
      * @param string $label button text
      * @param string $method get or post submit method
+     * @param array $attributes Attributes for the HTML button tag
      */
-    public function __construct(moodle_url $url, $label, $method='post', $primary=false) {
+    public function __construct(moodle_url $url, $label, $method='post', $primary=false, $attributes = []) {
         $this->url    = clone($url);
         $this->label  = $label;
         $this->method = $method;
         $this->primary = $primary;
+        $this->attributes = $attributes;
     }
 
     /**
@@ -876,6 +906,17 @@ class single_button implements renderable {
     }
 
     /**
+     * Sets an attribute for the HTML button tag.
+     *
+     * @param  string $name  The attribute name
+     * @param  mixed  $value The value
+     * @return null
+     */
+    public function set_attribute($name, $value) {
+        $this->attributes[$name] = $value;
+    }
+
+    /**
      * Export data.
      *
      * @param renderer_base $output Renderer.
@@ -894,6 +935,11 @@ class single_button implements renderable {
         $data->disabled = $this->disabled;
         $data->tooltip = $this->tooltip;
         $data->primary = $this->primary;
+
+        $data->attributes = [];
+        foreach ($this->attributes as $key => $value) {
+            $data->attributes[] = ['name' => $key, 'value' => $value];
+        }
 
         // Form parameters.
         $params = $this->url->params();
@@ -998,7 +1044,7 @@ class single_select implements renderable, templatable {
     var $formid = null;
 
     /**
-     * @var array List of attached actions
+     * @var help_icon The help icon for this element.
      */
     var $helpicon = null;
 
@@ -1089,7 +1135,19 @@ class single_select implements renderable, templatable {
         $data->title = $this->tooltip;
         $data->formid = !empty($this->formid) ? $this->formid : html_writer::random_id('single_select_f');
         $data->id = !empty($attributes['id']) ? $attributes['id'] : html_writer::random_id('single_select');
+
+        // Select element attributes.
+        // Unset attributes that are already predefined in the template.
         unset($attributes['id']);
+        unset($attributes['class']);
+        unset($attributes['name']);
+        unset($attributes['title']);
+        unset($attributes['disabled']);
+
+        // Map the attributes.
+        $data->attributes = array_map(function($key) use ($attributes) {
+            return ['name' => $key, 'value' => $attributes[$key]];
+        }, array_keys($attributes));
 
         // Form parameters.
         $params = $this->url->params();
@@ -1105,6 +1163,7 @@ class single_select implements renderable, templatable {
         if (is_string($this->nothing) && $this->nothing !== '') {
             $nothing = ['' => $this->nothing];
             $hasnothing = true;
+            $nothingkey = '';
         } else if (is_array($this->nothing)) {
             $nothingvalue = reset($this->nothing);
             if ($nothingvalue === 'choose' || $nothingvalue === 'choosedots') {
@@ -1113,6 +1172,7 @@ class single_select implements renderable, templatable {
                 $nothing = $this->nothing;
             }
             $hasnothing = true;
+            $nothingkey = key($this->nothing);
         }
         if ($hasnothing) {
             $options = $nothing + $this->options;
@@ -1125,11 +1185,17 @@ class single_select implements renderable, templatable {
                 foreach ($options[$value] as $optgroupname => $optgroupvalues) {
                     $sublist = [];
                     foreach ($optgroupvalues as $optvalue => $optname) {
-                        $sublist[] = [
+                        $option = [
                             'value' => $optvalue,
                             'name' => $optname,
                             'selected' => strval($this->selected) === strval($optvalue),
                         ];
+
+                        if ($hasnothing && $nothingkey === $optvalue) {
+                            $option['ignore'] = 'data-ignore';
+                        }
+
+                        $sublist[] = $option;
                     }
                     $data->options[] = [
                         'name' => $optgroupname,
@@ -1138,19 +1204,28 @@ class single_select implements renderable, templatable {
                     ];
                 }
             } else {
-                $data->options[] = [
+                $option = [
                     'value' => $value,
                     'name' => $options[$value],
                     'selected' => strval($this->selected) === strval($value),
                     'optgroup' => false
                 ];
+
+                if ($hasnothing && $nothingkey === $value) {
+                    $option['ignore'] = 'data-ignore';
+                }
+
+                $data->options[] = $option;
             }
         }
 
         // Label attributes.
         $data->labelattributes = [];
+        // Unset label attributes that are already in the template.
+        unset($this->labelattributes['for']);
+        // Map the label attributes.
         foreach ($this->labelattributes as $key => $value) {
-            $data->labelattributes = ['name' => $key, 'value' => $value];
+            $data->labelattributes[] = ['name' => $key, 'value' => $value];
         }
 
         // Help icon.
@@ -1224,7 +1299,7 @@ class url_select implements renderable, templatable {
     var $formid = null;
 
     /**
-     * @var array List of attached actions
+     * @var help_icon The help icon for this element.
      */
     var $helpicon = null;
 
@@ -1387,6 +1462,7 @@ class url_select implements renderable, templatable {
         unset($attributes['id']);
         unset($attributes['name']);
         unset($attributes['title']);
+        unset($attributes['disabled']);
 
         $data->showbutton = $this->showbutton;
 
@@ -1406,6 +1482,9 @@ class url_select implements renderable, templatable {
 
         // Label attributes.
         $data->labelattributes = [];
+        // Unset label attributes that are already in the template.
+        unset($this->labelattributes['for']);
+        // Map the label attributes.
         foreach ($this->labelattributes as $key => $value) {
             $data->labelattributes[] = ['name' => $key, 'value' => $value];
         }
@@ -1415,8 +1494,8 @@ class url_select implements renderable, templatable {
 
         // Finally all the remaining attributes.
         $data->attributes = [];
-        foreach ($this->attributes as $key => $value) {
-            $data->attributes = ['name' => $key, 'value' => $value];
+        foreach ($attributes as $key => $value) {
+            $data->attributes[] = ['name' => $key, 'value' => $value];
         }
 
         return $data;
@@ -1729,10 +1808,12 @@ class html_writer {
      * @param bool $checked Whether the checkbox is checked
      * @param string $label The label for the checkbox
      * @param array $attributes Any attributes to apply to the checkbox
+     * @param array $labelattributes Any attributes to apply to the label, if present
      * @return string html fragment
      */
-    public static function checkbox($name, $value, $checked = true, $label = '', array $attributes = null) {
-        $attributes = (array)$attributes;
+    public static function checkbox($name, $value, $checked = true, $label = '',
+            array $attributes = null, array $labelattributes = null) {
+        $attributes = (array) $attributes;
         $output = '';
 
         if ($label !== '' and !is_null($label)) {
@@ -1748,7 +1829,9 @@ class html_writer {
         $output .= self::empty_tag('input', $attributes);
 
         if ($label !== '' and !is_null($label)) {
-            $output .= self::tag('label', $label, array('for'=>$attributes['id']));
+            $labelattributes = (array) $labelattributes;
+            $labelattributes['for'] = $attributes['id'];
+            $output .= self::tag('label', $label, $labelattributes);
         }
 
         return $output;
@@ -2006,12 +2089,10 @@ class html_writer {
      */
     public static function script($jscode, $url=null) {
         if ($jscode) {
-            $attributes = array('type'=>'text/javascript');
-            return self::tag('script', "\n//<![CDATA[\n$jscode\n//]]>\n", $attributes) . "\n";
+            return self::tag('script', "\n//<![CDATA[\n$jscode\n//]]>\n") . "\n";
 
         } else if ($url) {
-            $attributes = array('type'=>'text/javascript', 'src'=>$url);
-            return self::tag('script', '', $attributes) . "\n";
+            return self::tag('script', '', ['src' => $url]) . "\n";
 
         } else {
             return '';
@@ -2126,8 +2207,9 @@ class html_writer {
                     $heading->header = true;
                 }
 
-                if ($heading->header && empty($heading->scope)) {
-                    $heading->scope = 'col';
+                $tagtype = 'td';
+                if ($heading->header && (string)$heading->text != '') {
+                    $tagtype = 'th';
                 }
 
                 $heading->attributes['class'] .= ' header c' . $key;
@@ -2143,16 +2225,15 @@ class html_writer {
                     $heading->attributes['class'] .= ' ' . $table->colclasses[$key];
                 }
                 $heading->attributes['class'] = trim($heading->attributes['class']);
-                $attributes = array_merge($heading->attributes, array(
-                        'style'     => $table->align[$key] . $table->size[$key] . $heading->style,
-                        'scope'     => $heading->scope,
-                        'colspan'   => $heading->colspan,
-                    ));
+                $attributes = array_merge($heading->attributes, [
+                    'style'     => $table->align[$key] . $table->size[$key] . $heading->style,
+                    'colspan'   => $heading->colspan,
+                ]);
 
-                $tagtype = 'td';
-                if ($heading->header === true) {
-                    $tagtype = 'th';
+                if ($tagtype == 'th') {
+                    $attributes['scope'] = !empty($heading->scope) ? $heading->scope : 'col';
                 }
+
                 $output .= html_writer::tag($tagtype, $heading->text, $attributes) . "\n";
             }
             $output .= html_writer::end_tag('tr') . "\n";
@@ -2635,7 +2716,7 @@ class html_table {
      * $row2->cells = array($cell2, $cell3);
      * $t->data = array($row1, $row2);
      */
-    public $data;
+    public $data = [];
 
     /**
      * @deprecated since Moodle 2.0. Styling should be in the CSS.
@@ -2684,6 +2765,12 @@ class html_table {
 
     /**
      * @var string Description of the contents for screen readers.
+     *
+     * The "summary" attribute on the "table" element is not supported in HTML5.
+     * Consider describing the structure of the table in a "caption" element or in a "figure" element containing the table;
+     * or, simplify the structure of the table so that no description is needed.
+     *
+     * @deprecated since Moodle 3.9.
      */
     public $summary;
 
@@ -3004,6 +3091,7 @@ class paging_bar implements renderable, templatable {
         $data->label = get_string('page');
         $data->pages = [];
         $data->haspages = $this->totalcount > $this->perpage;
+        $data->pagesize = $this->perpage;
 
         if (!$data->haspages) {
             return $data;
@@ -3011,7 +3099,7 @@ class paging_bar implements renderable, templatable {
 
         if ($this->page > 0) {
             $data->previous = [
-                'page' => $this->page - 1,
+                'page' => $this->page,
                 'url' => (new moodle_url($this->baseurl, [$this->pagevar => $this->page - 1]))->out(false)
             ];
         }
@@ -3057,7 +3145,7 @@ class paging_bar implements renderable, templatable {
 
         if ($this->page + 1 != $lastpage) {
             $data->next = [
-                'page' => $this->page + 1,
+                'page' => $this->page + 2,
                 'url' => (new moodle_url($this->baseurl, [$this->pagevar => $this->page + 1]))->out(false)
             ];
         }
@@ -3167,6 +3255,9 @@ class initials_bar implements renderable, templatable {
             $groupletter->url = $this->url->out(false, array($this->urlvar => $letter));
             if ($letter == $this->current) {
                 $groupletter->selected = $this->current;
+            }
+            if (!isset($data->group[$groupnumber])) {
+                $data->group[$groupnumber] = new stdClass();
             }
             $data->group[$groupnumber]->letter[] = $groupletter;
         }
@@ -3315,6 +3406,15 @@ class block_contents {
      */
     public function add_class($class) {
         $this->attributes['class'] .= ' '.$class;
+    }
+
+    /**
+     * Check if the block is a fake block.
+     *
+     * @return boolean
+     */
+    public function is_fake() {
+        return isset($this->attributes['data-block']) && $this->attributes['data-block'] == '_fake';
     }
 }
 
@@ -3679,11 +3779,10 @@ class custom_menu extends custom_menu_item {
                 $setting = trim($setting);
                 if (!empty($setting)) {
                     switch ($i) {
-                        case 0:
+                        case 0: // Menu text.
                             $itemtext = ltrim($setting, '-');
-                            $itemtitle = $itemtext;
                             break;
-                        case 1:
+                        case 1: // URL.
                             try {
                                 $itemurl = new moodle_url($setting);
                             } catch (moodle_exception $exception) {
@@ -3692,10 +3791,10 @@ class custom_menu extends custom_menu_item {
                                 $itemurl = null;
                             }
                             break;
-                        case 2:
+                        case 2: // Title attribute.
                             $itemtitle = $setting;
                             break;
-                        case 3:
+                        case 3: // Language.
                             if (!empty($language)) {
                                 $itemlanguages = array_map('trim', explode(',', $setting));
                                 $itemvisible &= in_array($language, $itemlanguages);
@@ -4110,27 +4209,39 @@ class action_menu implements renderable, templatable {
     public $actiontext = null;
 
     /**
+     * The string to use for the accessible label for the menu.
+     * @var array
+     */
+    public $actionlabel = null;
+
+    /**
      * An icon to use for the toggling the secondary menu (dropdown).
-     * @var actionicon
+     * @var pix_icon
      */
     public $actionicon;
 
     /**
      * Any text to use for the toggling the secondary menu (dropdown).
-     * @var menutrigger
+     * @var string
      */
     public $menutrigger = '';
 
     /**
+     * Any extra classes for toggling to the secondary menu.
+     * @var string
+     */
+    public $triggerextraclasses = '';
+
+    /**
      * Place the action menu before all other actions.
-     * @var prioritise
+     * @var bool
      */
     public $prioritise = false;
 
     /**
      * Constructs the action menu with the given items.
      *
-     * @param array $actions An array of actions.
+     * @param array $actions An array of actions (action_menu_link|pix_icon|string).
      */
     public function __construct(array $actions = array()) {
         static $initialised = 0;
@@ -4160,8 +4271,24 @@ class action_menu implements renderable, templatable {
         }
     }
 
-    public function set_menu_trigger($trigger) {
+    /**
+     * Sets the label for the menu trigger.
+     *
+     * @param string $label The text
+     */
+    public function set_action_label($label) {
+        $this->actionlabel = $label;
+    }
+
+    /**
+     * Sets the menu trigger text.
+     *
+     * @param string $trigger The text
+     * @param string $extraclasses Extra classes to style the secondary menu toggle.
+     */
+    public function set_menu_trigger($trigger, $extraclasses = '') {
         $this->menutrigger = $trigger;
+        $this->triggerextraclasses = $extraclasses;
     }
 
     /**
@@ -4255,7 +4382,7 @@ class action_menu implements renderable, templatable {
             $pixicon = '<b class="caret"></b>';
             $linkclasses[] = 'textmenu';
         } else {
-            $title = new lang_string('actions', 'moodle');
+            $title = new lang_string('actionsmenu', 'moodle');
             $this->actionicon = new pix_icon(
                 't/edit_menu',
                 '',
@@ -4274,10 +4401,17 @@ class action_menu implements renderable, templatable {
         if ($this->actiontext) {
             $string = $this->actiontext;
         }
+        $label = '';
+        if ($this->actionlabel) {
+            $label = $this->actionlabel;
+        } else {
+            $label = $title;
+        }
         $actions = $this->primaryactions;
         $attributes = array(
             'class' => implode(' ', $linkclasses),
             'title' => $title,
+            'aria-label' => $label,
             'id' => 'action-menu-toggle-'.$this->instance,
             'role' => 'menuitem'
         );
@@ -4350,6 +4484,9 @@ class action_menu implements renderable, templatable {
      *
      * The constraint is applied when the dialogue is shown and limits the display of the dialogue to within the
      * element the constraint identifies.
+     *
+     * This is required whenever the action menu is displayed inside any CSS element with the .no-overflow class
+     * (flexible_table and any of it's child classes are a likely candidate).
      *
      * @param string $ancestorselector A snippet of CSS used to identify the ancestor to contrain the dialogue to.
      */
@@ -4439,14 +4576,25 @@ class action_menu implements renderable, templatable {
         $actionicon = $this->actionicon;
         if (!empty($this->menutrigger)) {
             $primary->menutrigger = $this->menutrigger;
+            $primary->triggerextraclasses = $this->triggerextraclasses;
+            if ($this->actionlabel) {
+                $primary->title = $this->actionlabel;
+            } else if ($this->actiontext) {
+                $primary->title = $this->actiontext;
+            } else {
+                $primary->title = strip_tags($this->menutrigger);
+            }
         } else {
-            $primary->title = get_string('actions');
-            $actionicon = new pix_icon('t/edit_menu', '', 'moodle', ['class' => 'iconsmall actionmenu', 'title' => '']);
+            $primary->title = get_string('actionsmenu');
+            $iconattributes = ['class' => 'iconsmall actionmenu', 'title' => $primary->title];
+            $actionicon = new pix_icon('t/edit_menu', '', 'moodle', $iconattributes);
         }
 
         if ($actionicon instanceof pix_icon) {
             $primary->icon = $actionicon->export_for_pix();
-            $primary->title = !empty($actionicon->attributes['alt']) ? $this->actionicon->attributes['alt'] : '';
+            if (!empty($actionicon->attributes['alt'])) {
+                $primary->title = $actionicon->attributes['alt'];
+            }
         } else {
             $primary->iconraw = $actionicon ? $output->render($actionicon) : '';
         }
@@ -4544,6 +4692,12 @@ class action_menu_link extends action_link implements renderable {
     public $actionmenu = null;
 
     /**
+     * The number of instances of this action menu link (and its subclasses).
+     * @var int
+     */
+    protected static $instance = 1;
+
+    /**
      * Constructs the object.
      *
      * @param moodle_url $url The URL for the action.
@@ -4566,10 +4720,8 @@ class action_menu_link extends action_link implements renderable {
      * @return stdClass
      */
     public function export_for_template(renderer_base $output) {
-        static $instance = 1;
-
         $data = parent::export_for_template($output);
-        $data->instance = $instance++;
+        $data->instance = self::$instance++;
 
         // Ignore what the parent did with the attributes, except for ID and class.
         $data->attributes = [];
@@ -4747,6 +4899,10 @@ class progress_bar implements renderable, templatable {
      * @param bool $autostart Whether to start the progress bar right away.
      */
     public function __construct($htmlid = '', $width = 500, $autostart = false) {
+        if (!CLI_SCRIPT && !NO_OUTPUT_BUFFERING) {
+            debugging('progress_bar used in a non-CLI script without setting NO_OUTPUT_BUFFERING.', DEBUG_DEVELOPER);
+        }
+
         if (!empty($htmlid)) {
             $this->html_id  = $htmlid;
         } else {
@@ -4761,6 +4917,14 @@ class progress_bar implements renderable, templatable {
     }
 
     /**
+     * Getter for ID
+     * @return string id
+     */
+    public function get_id() : string {
+        return $this->html_id;
+    }
+
+    /**
      * Create a new progress bar, this function will output html.
      *
      * @return void Echo's output
@@ -4769,9 +4933,6 @@ class progress_bar implements renderable, templatable {
         global $OUTPUT;
 
         $this->time_start = microtime(true);
-        if (CLI_SCRIPT) {
-            return; // Temporary solution for cli scripts.
-        }
 
         flush();
         echo $OUTPUT->render($this);
@@ -4787,13 +4948,11 @@ class progress_bar implements renderable, templatable {
      * @throws coding_exception
      */
     private function _update($percent, $msg) {
+        global $OUTPUT;
+
         if (empty($this->time_start)) {
             throw new coding_exception('You must call create() (or use the $autostart ' .
                     'argument to the constructor) before you try updating the progress bar.');
-        }
-
-        if (CLI_SCRIPT) {
-            return; // Temporary solution for cli scripts.
         }
 
         $estimate = $this->estimate($percent);
@@ -4809,16 +4968,15 @@ class progress_bar implements renderable, templatable {
             return;
         }
 
-        $estimatemsg = null;
-        if (is_numeric($estimate)) {
-            $estimatemsg = get_string('secondsleft', 'moodle', round($estimate, 2));
+        $estimatemsg = '';
+        if ($estimate != 0 && is_numeric($estimate)) {
+            $estimatemsg = format_time(round($estimate));
         }
 
-        $this->percent = round($percent, 2);
+        $this->percent = $percent;
         $this->lastupdate = microtime(true);
 
-        echo html_writer::script(js_writer::function_call('updateProgressBar',
-            array($this->html_id, $this->percent, $msg, $estimatemsg)));
+        echo $OUTPUT->render_progress_bar_update($this->html_id, sprintf("%.1f", $this->percent), $msg, $estimatemsg);
         flush();
     }
 

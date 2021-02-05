@@ -81,7 +81,7 @@ class MoodleQuickForm_date_time_selector extends MoodleQuickForm_group {
         // Get the calendar type used - see MDL-18375.
         $calendartype = \core_calendar\type_factory::get_calendar_instance();
         $this->_options = array('startyear' => $calendartype->get_min_year(), 'stopyear' => $calendartype->get_max_year(),
-            'defaulttime' => 0, 'timezone' => 99, 'step' => 5, 'optional' => false);
+            'defaulttime' => 0, 'timezone' => 99, 'step' => 1, 'optional' => false);
 
         // TODO MDL-52313 Replace with the call to parent::__construct().
         HTML_QuickForm_element::__construct($elementName, $elementLabel, $attributes);
@@ -99,11 +99,6 @@ class MoodleQuickForm_date_time_selector extends MoodleQuickForm_group {
                     }
                 }
             }
-        }
-
-        // The YUI2 calendar only supports the gregorian calendar type.
-        if ($calendartype->get_name() === 'gregorian') {
-            form_init_date_js();
         }
     }
 
@@ -159,8 +154,7 @@ class MoodleQuickForm_date_time_selector extends MoodleQuickForm_group {
         if ($calendartype->get_name() === 'gregorian') {
             $image = $OUTPUT->pix_icon('i/calendar', get_string('calendar', 'calendar'), 'moodle');
             $this->_elements[] = $this->createFormElement('link', 'calendar',
-                    null, '#', $image,
-                    array('class' => 'visibleifjs'));
+                    null, '#', $image);
         }
         // If optional we add a checkbox which the user can use to turn if on
         if ($this->_options['optional']) {
@@ -192,7 +186,7 @@ class MoodleQuickForm_date_time_selector extends MoodleQuickForm_group {
                 if (null === $value) {
                     // If no boxes were checked, then there is no value in the array
                     // yet we don't want to display default value in this case.
-                    if ($caller->isSubmitted()) {
+                    if ($caller->isSubmitted() && !$caller->is_new_repeat($this->getName())) {
                         $value = $this->_findValue($caller->_submitValues);
                     } else {
                         $value = $this->_findValue($caller->_defaultValues);
@@ -228,7 +222,7 @@ class MoodleQuickForm_date_time_selector extends MoodleQuickForm_group {
                 }
                 break;
             case 'createElement':
-                if ($arg[2]['optional']) {
+                if (isset($arg[2]['optional']) && $arg[2]['optional']) {
                     // When using the function addElement, rather than createElement, we still
                     // enter this case, making this check necessary.
                     if ($this->_usedcreateelement) {
@@ -282,7 +276,19 @@ class MoodleQuickForm_date_time_selector extends MoodleQuickForm_group {
      * @param string $error An error message associated with a group
      */
     function accept(&$renderer, $required = false, $error = null) {
+        form_init_date_js();
         $renderer->renderElement($this, $required, $error);
+    }
+
+    /**
+     * Export for template
+     *
+     * @param renderer_base $output
+     * @return array|stdClass
+     */
+    public function export_for_template(renderer_base $output) {
+        form_init_date_js();
+        return parent::export_for_template($output);
     }
 
     /**

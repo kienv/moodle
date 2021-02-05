@@ -49,7 +49,7 @@ class mod_lesson_renderer extends plugin_renderer_base {
         // Build the buttons
         $context = context_module::instance($cm->id);
 
-    /// Header setup
+        // Header setup.
         $this->page->set_title($title);
         $this->page->set_heading($this->page->course->fullname);
         lesson_add_header_buttons($cm, $context, $extraeditbuttons, $lessonpageid);
@@ -57,7 +57,10 @@ class mod_lesson_renderer extends plugin_renderer_base {
 
         if (has_capability('mod/lesson:manage', $context)) {
             $output .= $this->output->heading_with_help($activityname, 'overview', 'lesson');
-
+            // Info box.
+            if ($lesson->intro) {
+                $output .= $this->output->box(format_module_intro('lesson', $lesson, $cm->id), 'generalbox', 'intro');
+            }
             if (!empty($currenttab)) {
                 ob_start();
                 include($CFG->dirroot.'/mod/lesson/tabs.php');
@@ -66,6 +69,10 @@ class mod_lesson_renderer extends plugin_renderer_base {
             }
         } else {
             $output .= $this->output->heading($activityname);
+            // Info box.
+            if ($lesson->intro) {
+                $output .= $this->output->box(format_module_intro('lesson', $lesson, $cm->id), 'generalbox', 'intro');
+            }
         }
 
         foreach ($lesson->messages as $message) {
@@ -169,11 +176,13 @@ class mod_lesson_renderer extends plugin_renderer_base {
         $output = $this->output->box(get_string('youhaveseen','lesson'), 'generalbox boxaligncenter');
         $output .= $this->output->box_start('center');
 
-        $yeslink = html_writer::link(new moodle_url('/mod/lesson/view.php', array('id'=>$this->page->cm->id, 'pageid'=>$lastpageseenid, 'startlastseen'=>'yes')), get_string('yes'));
+        $yeslink = html_writer::link(new moodle_url('/mod/lesson/view.php', array('id' => $this->page->cm->id,
+            'pageid' => $lastpageseenid, 'startlastseen' => 'yes')), get_string('yes'), array('class' => 'btn btn-primary'));
         $output .= html_writer::tag('span', $yeslink, array('class'=>'lessonbutton standardbutton'));
         $output .= '&nbsp;';
 
-        $nolink = html_writer::link(new moodle_url('/mod/lesson/view.php', array('id'=>$this->page->cm->id, 'pageid'=>$lesson->firstpageid, 'startlastseen'=>'no')), get_string('no'));
+        $nolink = html_writer::link(new moodle_url('/mod/lesson/view.php', array('id' => $this->page->cm->id,
+            'pageid' => $lesson->firstpageid, 'startlastseen' => 'no')), get_string('no'), array('class' => 'btn btn-secondary'));
         $output .= html_writer::tag('span', $nolink, array('class'=>'lessonbutton standardbutton'));
 
         $output .= $this->output->box_end();
@@ -280,11 +289,10 @@ class mod_lesson_renderer extends plugin_renderer_base {
             $pagetable->cellspacing = 0;
             $pagetable->cellpadding = '5px';
             $pagetable->data = array();
-            $pagetable->id = 'lesson-' . $pageid;
 
             $pageheading = new html_table_cell();
 
-            $pageheading->text = format_string($page->title);
+            $pageheading->text = html_writer::tag('a', '', array('id' => 'lesson-' . $pageid)) . format_string($page->title);
             if ($canedit) {
                 $pageheading->text .= ' '.$this->page_action_links($page, $npages);
             }
@@ -307,7 +315,7 @@ class mod_lesson_renderer extends plugin_renderer_base {
 
             $pagetable = $page->display_answers($pagetable);
 
-            $content .= html_writer::start_tag('div', array('class' => 'no-overflow'));
+            $content .= html_writer::start_tag('div');
             $content .= html_writer::table($pagetable);
             $content .= html_writer::end_tag('div');
 
@@ -439,7 +447,7 @@ class mod_lesson_renderer extends plugin_renderer_base {
             foreach ($links as $link) {
                 $options[$link['type']] = $link['name'];
             }
-            $options[0] = get_string('question', 'lesson');
+            $options[0] = get_string('addaquestionpage', 'lesson');
 
             $addpageurl = new moodle_url('/mod/lesson/editpage.php', array('id'=>$this->page->cm->id, 'pageid'=>$page->id, 'sesskey'=>sesskey()));
             $addpageselect = new single_select($addpageurl, 'qtype', $options, null, array(''=>get_string('addanewpage', 'lesson').'...'), 'addpageafter'.$page->id);
@@ -504,10 +512,14 @@ class mod_lesson_renderer extends plugin_renderer_base {
             $progress = $lesson->calculate_progress();
         }
 
-        // print out the Progress Bar.  Attempted to put as much as possible in the style sheets.
-        $content = '<br />' . html_writer::tag('div', $progress . '%', array('class' => 'progress_bar_completed', 'style' => 'width: '. $progress . '%;'));
-        $printprogress = html_writer::tag('div', get_string('progresscompleted', 'lesson', $progress) . $content, array('class' => 'progress_bar'));
-
+        $content = html_writer::start_tag('div');
+        $content .= html_writer::start_tag('div', array('class' => 'progress'));
+        $content .= html_writer::start_tag('div', array('class' => 'progress-bar bar', 'role' => 'progressbar',
+            'style' => 'width: ' . $progress .'%', 'aria-valuenow' => $progress, 'aria-valuemin' => 0, 'aria-valuemax' => 100));
+        $content .= $progress . "%";
+        $content .= html_writer::end_tag('div');
+        $content .= html_writer::end_tag('div');
+        $printprogress = html_writer::tag('div', get_string('progresscompleted', 'lesson', $progress) . $content);
         return $this->output->box($printprogress, 'progress_bar');
     }
 
@@ -608,7 +620,8 @@ class mod_lesson_renderer extends plugin_renderer_base {
         $output .= $this->box_end(); // End of Lesson button to Continue.
 
         if ($data->reviewlesson !== false) {
-            $output .= html_writer::link($data->reviewlesson, get_string('reviewlesson', 'lesson'), array('class' => 'centerpadded lessonbutton standardbutton p-r-1'));
+            $output .= html_writer::link($data->reviewlesson, get_string('reviewlesson', 'lesson'),
+                array('class' => 'centerpadded lessonbutton standardbutton pr-3'));
         }
         if ($data->modattemptsnoteacher !== false) {
             $output .= $this->paragraph(get_string("modattemptsnoteacher", "lesson"), 'centerpadded');
@@ -620,13 +633,13 @@ class mod_lesson_renderer extends plugin_renderer_base {
 
         $url = new moodle_url('/course/view.php', array('id' => $course->id));
         $output .= html_writer::link($url, get_string('returnto', 'lesson', format_string($course->fullname, true)),
-                array('class' => 'centerpadded lessonbutton standardbutton p-r-1'));
+                array('class' => 'centerpadded lessonbutton standardbutton pr-3'));
 
         if (has_capability('gradereport/user:view', context_course::instance($course->id))
                 && $course->showgrades && $lesson->grade != 0 && !$lesson->practice) {
             $url = new moodle_url('/grade/index.php', array('id' => $course->id));
             $output .= html_writer::link($url, get_string('viewgrades', 'lesson'),
-                array('class' => 'centerpadded lessonbutton standardbutton p-r-1'));
+                array('class' => 'centerpadded lessonbutton standardbutton pr-3'));
         }
         return $output;
     }

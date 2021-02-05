@@ -24,6 +24,8 @@
 
 namespace core_calendar\local\event\entities;
 
+use core_calendar\local\event\proxies\proxy_interface;
+
 defined('MOODLE_INTERNAL') || die();
 
 /**
@@ -53,6 +55,20 @@ interface event_interface {
      * @return description_interface
      */
     public function get_description();
+
+    /**
+     * Get the event's location.
+     *
+     * @return location_interface
+     */
+    public function get_location();
+
+    /**
+     * Get the category object associated with the event.
+     *
+     * @return proxy_interface
+     */
+    public function get_category();
 
     /**
      * Get the course object associated with the event.
@@ -97,9 +113,10 @@ interface event_interface {
     public function get_times();
 
     /**
-     * Get repeats of this event.
+     * Get repeats of this event or null if the event has no
+     * repeats.
      *
-     * @return event_collection_interface
+     * @return event_collection_interface|null
      */
     public function get_repeats();
 
@@ -116,4 +133,10 @@ interface event_interface {
      * @return bool true if the event is visible, false otherwise
      */
     public function is_visible();
+
+    /**
+     * Resolved event component (frankenstyle name of activity module or the component)
+     * @return string|null
+     */
+    public function get_component();
 }

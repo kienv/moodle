@@ -46,17 +46,22 @@ class qtype_multichoice_edit_form extends question_edit_form {
         );
         $mform->addElement('select', 'single',
                 get_string('answerhowmany', 'qtype_multichoice'), $menu);
-        $mform->setDefault('single', 1);
+        $mform->setDefault('single', get_config('qtype_multichoice', 'answerhowmany'));
 
         $mform->addElement('advcheckbox', 'shuffleanswers',
                 get_string('shuffleanswers', 'qtype_multichoice'), null, null, array(0, 1));
         $mform->addHelpButton('shuffleanswers', 'shuffleanswers', 'qtype_multichoice');
-        $mform->setDefault('shuffleanswers', 1);
+        $mform->setDefault('shuffleanswers', get_config('qtype_multichoice', 'shuffleanswers'));
 
         $mform->addElement('select', 'answernumbering',
                 get_string('answernumbering', 'qtype_multichoice'),
                 qtype_multichoice::get_numbering_styles());
-        $mform->setDefault('answernumbering', 'abc');
+        $mform->setDefault('answernumbering', get_config('qtype_multichoice', 'answernumbering'));
+
+        $mform->addElement('selectyesno', 'showstandardinstruction',
+            get_string('showstandardinstruction', 'qtype_multichoice'), null, null, [0, 1]);
+        $mform->addHelpButton('showstandardinstruction', 'showstandardinstruction', 'qtype_multichoice');
+        $mform->setDefault('showstandardinstruction', 0);
 
         $this->add_per_answer_fields($mform, get_string('choiceno', 'qtype_multichoice', '{no}'),
                 question_bank::fraction_options_full(), max(5, QUESTION_NUMANS_START));
@@ -99,6 +104,7 @@ class qtype_multichoice_edit_form extends question_edit_form {
             $question->single = $question->options->single;
             $question->shuffleanswers = $question->options->shuffleanswers;
             $question->answernumbering = $question->options->answernumbering;
+            $question->showstandardinstruction = $question->options->showstandardinstruction;
         }
 
         return $question;

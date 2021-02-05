@@ -30,28 +30,19 @@ defined('MOODLE_INTERNAL') || die();
  * @return bool result
  */
 function xmldb_auth_manual_upgrade($oldversion) {
-    global $CFG, $DB;
+    global $CFG;
 
-    // Moodle v2.8.0 release upgrade line.
+    // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v2.9.0 release upgrade line.
+    // Automatically generated Moodle v3.7.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.0.0 release upgrade line.
+    // Automatically generated Moodle v3.8.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.1.0 release upgrade line.
+    // Automatically generated Moodle v3.9.0 release upgrade line.
     // Put any upgrade step following this.
-
-    // Automatically generated Moodle v3.2.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    if ($oldversion < 2017020700) {
-        // Convert info in config plugins from auth/manual to auth_manual.
-        $DB->set_field('config_plugins', 'plugin', 'auth_manual', array('plugin' => 'auth/manual'));
-        upgrade_plugin_savepoint(true, 2017020700, 'auth', 'manual');
-    }
 
     return true;
 }

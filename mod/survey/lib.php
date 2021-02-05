@@ -270,7 +270,7 @@ function survey_print_recent_activity($course, $viewfullnames, $timestart) {
         return false;
     }
 
-    echo $OUTPUT->heading(get_string('newsurveyresponses', 'survey').':', 3);
+    echo $OUTPUT->heading(get_string('newsurveyresponses', 'survey') . ':', 6);
     foreach ($surveys as $survey) {
         $url = $CFG->wwwroot.'/mod/survey/view.php?id='.$survey->cmid;
         print_recent_activity_note($survey->time, $survey, $survey->name, $url, false, $viewfullnames);
@@ -537,14 +537,15 @@ function survey_print_multi($question) {
         $P = "";
     }
 
+    echo "<colgroup colspan=\"7\"></colgroup>";
     echo "<tr class=\"smalltext\"><th scope=\"row\">$strresponses</th>";
     echo "<th scope=\"col\" class=\"hresponse\">". get_string('notyetanswered', 'survey'). "</th>";
-    while (list ($key, $val) = each ($options)) {
+    foreach ($options as $key => $val) {
         echo "<th scope=\"col\" class=\"hresponse\">$val</th>\n";
     }
     echo "</tr>\n";
 
-    echo "<tr><th scope=\"col\" colspan=\"7\">$question->intro</th></tr>\n";
+    echo "<tr><th scope=\"colgroup\" colspan=\"7\">$question->intro</th></tr>\n";
 
     $subquestions = survey_get_subquestions($question);
 
@@ -762,17 +763,11 @@ function survey_reset_userdata($data) {
         $status[] = array('component'=>$componentstr, 'item'=>get_string('deleteallanswers', 'survey'), 'error'=>false);
     }
 
-    // no date shifting
-    return $status;
-}
+    // No date shifting.
+    // Any changes to the list of dates that needs to be rolled should be same during course restore and course reset.
+    // See MDL-9367.
 
-/**
- * Returns all other caps used in module
- *
- * @return array
- */
-function survey_get_extra_capabilities() {
-    return array('moodle/site:accessallgroups');
+    return $status;
 }
 
 /**
@@ -1117,22 +1112,28 @@ function survey_check_updates_since(cm_info $cm, $from, $filter = array()) {
  *
  * @param calendar_event $event
  * @param \core_calendar\action_factory $factory
+ * @param int $userid User id to use for all capability checks, etc. Set to 0 for current user (default).
  * @return \core_calendar\local\event\entities\action_interface|null
  */
 function mod_survey_core_calendar_provide_event_action(calendar_event $event,
-                                                      \core_calendar\action_factory $factory) {
-    $cm = get_fast_modinfo($event->courseid)->instances['survey'][$event->instance];
+                                                      \core_calendar\action_factory $factory,
+                                                      int $userid = 0) {
+    global $USER;
+
+    if (empty($userid)) {
+        $userid = $USER->id;
+    }
+
+    $cm = get_fast_modinfo($event->courseid, $userid)->instances['survey'][$event->instance];
     $context = context_module::instance($cm->id);
 
-    if (!has_capability('mod/survey:participate', $context)) {
+    if (!has_capability('mod/survey:participate', $context, $userid)) {
         return null;
     }
 
-    $course = new stdClass();
-    $course->id = $event->courseid;
-    $completion = new \completion_info($course);
+    $completion = new \completion_info($cm->get_course());
 
-    $completiondata = $completion->get_data($cm, false);
+    $completiondata = $completion->get_data($cm, false, $userid);
 
     if ($completiondata->completionstate != COMPLETION_INCOMPLETE) {
         return null;
@@ -1161,13 +1162,18 @@ function survey_get_coursemodule_info($coursemodule) {
     global $DB;
 
     $dbparams = ['id' => $coursemodule->instance];
-    $fields = 'id, name, completionsubmit';
+    $fields = 'id, name, intro, introformat, completionsubmit';
     if (!$survey = $DB->get_record('survey', $dbparams, $fields)) {
         return false;
     }
 
     $result = new cached_cm_info();
     $result->name = $survey->name;
+
+    if ($coursemodule->showdescription) {
+        // Convert intro to html. Do not filter cached version, filters run at display time.
+        $result->content = format_module_intro('survey', $survey, $coursemodule->id, false);
+    }
 
     // Populate the custom completion rules as key => value pairs, but only if the completion mode is 'automatic'.
     if ($coursemodule->completion == COMPLETION_TRACKING_AUTOMATIC) {
@@ -1194,10 +1200,9 @@ function mod_survey_get_completion_active_rule_descriptions($cm) {
     foreach ($cm->customdata['customcompletionrules'] as $key => $val) {
         switch ($key) {
             case 'completionsubmit':
-                if (empty($val)) {
-                    continue;
+                if (!empty($val)) {
+                    $descriptions[] = get_string('completionsubmit', 'survey');
                 }
-                $descriptions[] = get_string('completionsubmit', 'survey');
                 break;
             default:
                 break;

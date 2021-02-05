@@ -76,7 +76,7 @@ class competency extends persistent {
                 'default' => FORMAT_HTML
             ),
             'sortorder' => array(
-                'default' => null,
+                'default' => 0,
                 'type' => PARAM_INT
             ),
             'parentid' => array(
@@ -676,7 +676,8 @@ class competency extends persistent {
     public static function share_same_framework(array $ids) {
         global $DB;
         list($insql, $params) = $DB->get_in_or_equal($ids);
-        return $DB->count_records_select(self::TABLE, "id $insql", $params, "COUNT(DISTINCT(competencyframeworkid))") == 1;
+        $sql = "SELECT COUNT('x') FROM (SELECT DISTINCT(competencyframeworkid) FROM {" . self::TABLE . "} WHERE id {$insql}) f";
+        return $DB->count_records_sql($sql, $params) == 1;
     }
 
     /**
@@ -768,6 +769,8 @@ class competency extends persistent {
      * @return bool True if we can delete the competencies.
      */
     public static function can_all_be_deleted($ids) {
+        global $CFG;
+
         if (empty($ids)) {
             return true;
         }
@@ -791,6 +794,13 @@ class competency extends persistent {
         if (user_competency_plan::has_records_for_competencies($ids)) {
             return false;
         }
+
+        require_once($CFG->libdir . '/badgeslib.php');
+        // Check if competency is used in a badge.
+        if (badge_award_criteria_competency_has_records_for_competencies($ids)) {
+            return false;
+        }
+
         return true;
     }
 

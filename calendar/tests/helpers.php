@@ -32,6 +32,8 @@ use core_calendar\local\event\entities\action_event;
 use core_calendar\local\event\entities\event;
 use core_calendar\local\event\entities\repeat_event_collection;
 use core_calendar\local\event\proxies\std_proxy;
+use core_calendar\local\event\proxies\coursecat_proxy;
+use core_calendar\local\event\proxies\cm_info_proxy;
 use core_calendar\local\event\value_objects\action;
 use core_calendar\local\event\value_objects\event_description;
 use core_calendar\local\event\value_objects\event_times;
@@ -46,7 +48,7 @@ use core_calendar\local\event\factories\event_factory_interface;
 function create_event($properties) {
     $record = new \stdClass();
     $record->name = 'event name';
-    $record->eventtype = 'global';
+    $record->eventtype = 'site';
     $record->repeat = 0;
     $record->repeats = 0;
     $record->timestart = time();
@@ -54,6 +56,7 @@ function create_event($properties) {
     $record->timesort = 0;
     $record->type = CALENDAR_EVENT_TYPE_STANDARD;
     $record->courseid = 0;
+    $record->categoryid = 0;
 
     foreach ($properties as $name => $value) {
         $record->$name = $value;
@@ -94,14 +97,7 @@ class action_event_test_factory implements event_factory_interface {
         $subscription = null;
 
         if ($record->instance && $record->modulename) {
-            $modulename = $record->modulename;
-            $module = new std_proxy($record->instance, function($id) use ($modulename) {
-                return get_coursemodule_from_instance($modulename, $id);
-            },
-            (object)[
-                'modname' => $modulename,
-                'instance' => $record->instance
-            ]);
+            $module = new cm_info_proxy($record->instance, $record->modulename, $record->courseid);
         }
 
         if ($record->subscriptionid) {
@@ -114,6 +110,7 @@ class action_event_test_factory implements event_factory_interface {
             $record->id,
             $record->name,
             new event_description($record->description, $record->format),
+            new coursecat_proxy($record->categoryid),
             new std_proxy($record->courseid, function($id) {
                 $course = new \stdClass();
                 $course->id = $id;
@@ -129,17 +126,20 @@ class action_event_test_factory implements event_factory_interface {
                 $user->id = $id;
                 return $user;
             }),
-            new repeat_event_collection($record->id, null, $this),
+            !empty($record->repeatid) ? new repeat_event_collection($record, $this) : null,
             $module,
             $record->eventtype,
             new event_times(
                 (new \DateTimeImmutable())->setTimestamp($record->timestart),
                 (new \DateTimeImmutable())->setTimestamp($record->timestart + $record->timeduration),
                 (new \DateTimeImmutable())->setTimestamp($record->timesort ? $record->timesort : $record->timestart),
-                (new \DateTimeImmutable())->setTimestamp($record->timemodified)
+                (new \DateTimeImmutable())->setTimestamp($record->timemodified),
+                (new \DateTimeImmutable())->setTimestamp(usergetmidnight($record->timesort))
             ),
             !empty($record->visible),
-            $subscription
+            $subscription,
+            $record->location,
+            !empty($record->component) ? $record->component : null
         );
 
         $action = new action(

@@ -25,7 +25,7 @@ M.availability_completion.form.initInner = function(cms) {
 
 M.availability_completion.form.getNode = function(json) {
     // Create HTML structure.
-    var html = '<span class="col-form-label p-r-1"> ' + M.util.get_string('title', 'availability_completion') + '</span>' +
+    var html = '<span class="col-form-label pr-3"> ' + M.util.get_string('title', 'availability_completion') + '</span>' +
                ' <span class="availability-group form-group"><label>' +
             '<span class="accesshide">' + M.util.get_string('label_cm', 'availability_completion') + ' </span>' +
             '<select class="custom-select" name="cm" title="' + M.util.get_string('label_cm', 'availability_completion') + '">' +
@@ -77,6 +77,16 @@ M.availability_completion.form.fillErrors = function(errors, node) {
     var cmid = parseInt(node.one('select[name=cm]').get('value'), 10);
     if (cmid === 0) {
         errors.push('availability_completion:error_selectcmid');
+    }
+    var e = parseInt(node.one('select[name=e]').get('value'), 10);
+    if (((e === 2) || (e === 3))) {
+        this.cms.forEach(function(cm) {
+            if (cm.id === cmid) {
+                if (cm.completiongradeitemnumber === null) {
+                    errors.push('availability_completion:error_selectcmidpassfail');
+                }
+            }
+        });
     }
 };
 

@@ -48,6 +48,7 @@ class core_userliblib_testcase extends advanced_testcase {
         // Create user and modify user profile.
         $user1 = $this->getDataGenerator()->create_user();
         $user2 = $this->getDataGenerator()->create_user();
+        $user3 = $this->getDataGenerator()->create_user();
 
         $course1 = $this->getDataGenerator()->create_course();
         $coursecontext = context_course::instance($course1->id);
@@ -72,6 +73,68 @@ class core_userliblib_testcase extends advanced_testcase {
         $this->assertEquals(fullname($user2), $result['fullname']);
         $this->assertEquals($course1->id, $result['enrolledcourses'][0]['id']);
 
+        // Get user2 details as a user who doesn't share any course with user2.
+        $this->setUser($user3);
+        $result = user_get_user_details_courses($user2);
+        $this->assertNull($result);
+    }
+
+    /**
+     * Verify return when course groupmode set to 'no groups'.
+     */
+    public function test_user_get_user_details_courses_groupmode_nogroups() {
+        $this->resetAfterTest();
+
+        // Enrol 2 users into a course with groupmode set to 'no groups'.
+        // Profiles should be visible.
+        $user1 = $this->getDataGenerator()->create_user();
+        $user2 = $this->getDataGenerator()->create_user();
+        $course = $this->getDataGenerator()->create_course((object) ['groupmode' => 0]);
+        $this->getDataGenerator()->enrol_user($user1->id, $course->id);
+        $this->getDataGenerator()->enrol_user($user2->id, $course->id);
+
+        $this->setUser($user1);
+        $userdetails = user_get_user_details_courses($user2);
+        $this->assertIsArray($userdetails);
+        $this->assertEquals($user2->id, $userdetails['id']);
+    }
+
+    /**
+     * Verify return when course groupmode set to 'separate groups'.
+     */
+    public function test_user_get_user_details_courses_groupmode_separate() {
+        $this->resetAfterTest();
+
+        // Enrol 2 users into a course with groupmode set to 'separate groups'.
+        // The users are not in any groups, so profiles should be hidden (same as if they were in separate groups).
+        $user1 = $this->getDataGenerator()->create_user();
+        $user2 = $this->getDataGenerator()->create_user();
+        $course = $this->getDataGenerator()->create_course((object) ['groupmode' => 1]);
+        $this->getDataGenerator()->enrol_user($user1->id, $course->id);
+        $this->getDataGenerator()->enrol_user($user2->id, $course->id);
+
+        $this->setUser($user1);
+        $this->assertNull(user_get_user_details_courses($user2));
+    }
+
+    /**
+     * Verify return when course groupmode set to 'visible groups'.
+     */
+    public function test_user_get_user_details_courses_groupmode_visible() {
+        $this->resetAfterTest();
+
+        // Enrol 2 users into a course with groupmode set to 'visible groups'.
+        // The users are not in any groups, and profiles should be visible because of the groupmode.
+        $user1 = $this->getDataGenerator()->create_user();
+        $user2 = $this->getDataGenerator()->create_user();
+        $course = $this->getDataGenerator()->create_course((object) ['groupmode' => 2]);
+        $this->getDataGenerator()->enrol_user($user1->id, $course->id);
+        $this->getDataGenerator()->enrol_user($user2->id, $course->id);
+
+        $this->setUser($user1);
+        $userdetails = user_get_user_details_courses($user2);
+        $this->assertIsArray($userdetails);
+        $this->assertEquals($user2->id, $userdetails['id']);
     }
 
     /**
@@ -147,7 +210,7 @@ class core_userliblib_testcase extends advanced_testcase {
         $user->auth = 'shibboleth';
         $user->country = 'AU';
         $user->lang = 'en';
-        $user->theme = 'clean';
+        $user->theme = 'classic';
         $user->timezone = 'Australia/Perth';
         $user->url = 'www.moodle.org';
         user_update_user($user, true, false);
@@ -234,11 +297,60 @@ class core_userliblib_testcase extends advanced_testcase {
         $user['auth'] = 'shibboleth';
         $user['country'] = 'AU';
         $user['lang'] = 'en';
-        $user['theme'] = 'clean';
+        $user['theme'] = 'classic';
         $user['timezone'] = 'Australia/Perth';
         $user['url'] = 'www.moodle.org';
         user_create_user($user, true, false);
         $this->assertDebuggingNotCalled();
+    }
+
+    /**
+     * Test that {@link user_create_user()} throws exception when invalid username is provided.
+     *
+     * @dataProvider data_create_user_invalid_username
+     * @param string $username Invalid username
+     * @param string $expectmessage Expected exception message
+     */
+    public function test_create_user_invalid_username($username, $expectmessage) {
+        global $CFG;
+
+        $this->resetAfterTest();
+        $CFG->extendedusernamechars = false;
+
+        $user = [
+            'username' => $username,
+        ];
+
+        $this->expectException('moodle_exception');
+        $this->expectExceptionMessage($expectmessage);
+
+        user_create_user($user);
+    }
+
+    /**
+     * Data provider for {@link self::test_create_user_invalid_username()}.
+     *
+     * @return array
+     */
+    public function data_create_user_invalid_username() {
+        return [
+            'empty_string' => [
+                '',
+                'The username cannot be blank',
+            ],
+            'only_whitespace' => [
+                "\t\t  \t\n ",
+                'The username cannot be blank',
+            ],
+            'lower_case' => [
+                'Mudrd8mz',
+                'The username must be in lower case',
+            ],
+            'extended_chars' => [
+                'dmudrák',
+                'The given username contains invalid characters',
+            ],
+        ];
     }
 
     /**
@@ -531,9 +643,13 @@ class core_userliblib_testcase extends advanced_testcase {
         $this->getDataGenerator()->enrol_user($user4->id, $course3->id);
         $this->getDataGenerator()->enrol_user($user5->id, $course3->id);
 
+        // User 3 should not be able to see user 1, either by passing their own course (course 2) or user 1's course (course 1).
+        $this->setUser($user3);
+        $this->assertFalse(user_can_view_profile($user1, $course2));
+        $this->assertFalse(user_can_view_profile($user1, $course1));
+
         // Remove capability moodle/user:viewdetails in course 2.
         assign_capability('moodle/user:viewdetails', CAP_PROHIBIT, $studentrole->id, $coursecontext);
-        $coursecontext->mark_dirty();
         // Set current user to user 1.
         $this->setUser($user1);
         // User 1 can see User 1's profile.
@@ -576,13 +692,22 @@ class core_userliblib_testcase extends advanced_testcase {
         $this->setUser($user5);
         $this->assertTrue(user_can_view_profile($user4));
 
+        // Test the user:viewalldetails cap check using the course creator role which, by default, can't see student profiles.
+        $this->setUser($user7);
+        $this->assertFalse(user_can_view_profile($user4));
+        assign_capability('moodle/user:viewalldetails', CAP_ALLOW, $coursecreatorrole->id, context_system::instance()->id, true);
+        reload_all_capabilities();
+        $this->assertTrue(user_can_view_profile($user4));
+        unassign_capability('moodle/user:viewalldetails', $coursecreatorrole->id, $coursecontext->id);
+        reload_all_capabilities();
+
         $CFG->coursecontact = null;
 
         // Visitor (Not a guest user, userid=0).
         $CFG->forceloginforprofiles = 1;
         $this->setUser($user8);
+        $this->assertFalse(user_can_view_profile($user1));
 
-        $allroles = $DB->get_records_menu('role', array(), 'id', 'archetype, id');
         // Let us test with guest user.
         $this->setGuestUser();
         $CFG->forceloginforprofiles = 1;
@@ -591,7 +716,8 @@ class core_userliblib_testcase extends advanced_testcase {
         }
 
         // Even with cap, still guests should not be allowed in.
-        assign_capability('moodle/user:viewdetails', CAP_ALLOW, $allroles['guest'], context_system::instance()->id, true);
+        $guestrole = $DB->get_records_menu('role', array('shortname' => 'guest'), 'id', 'archetype, id');
+        assign_capability('moodle/user:viewdetails', CAP_ALLOW, $guestrole['guest'], context_system::instance()->id, true);
         reload_all_capabilities();
         foreach ($users as $user) {
             $this->assertFalse(user_can_view_profile($user));
@@ -613,6 +739,38 @@ class core_userliblib_testcase extends advanced_testcase {
         foreach ($users as $user) {
             $this->assertTrue(user_can_view_profile($user));
         }
+
+        // Testing non-shared courses where capabilities are met, using system role overrides.
+        $CFG->forceloginforprofiles = $tempcfg;
+        $course4 = $this->getDataGenerator()->create_course();
+        $this->getDataGenerator()->enrol_user($user1->id, $course4->id);
+
+        // Assign a manager role at the system context.
+        $managerrole = $DB->get_record('role', array('shortname' => 'manager'));
+        $user9 = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->role_assign($managerrole->id, $user9->id);
+
+        // Make sure viewalldetails and viewdetails are overridden to 'prevent' (i.e. can be overridden at a lower context).
+        $systemcontext = context_system::instance();
+        assign_capability('moodle/user:viewdetails', CAP_PREVENT, $managerrole->id, $systemcontext, true);
+        assign_capability('moodle/user:viewalldetails', CAP_PREVENT, $managerrole->id, $systemcontext, true);
+
+        // And override these to 'Allow' in a specific course.
+        $course4context = context_course::instance($course4->id);
+        assign_capability('moodle/user:viewalldetails', CAP_ALLOW, $managerrole->id, $course4context, true);
+        assign_capability('moodle/user:viewdetails', CAP_ALLOW, $managerrole->id, $course4context, true);
+
+        // The manager now shouldn't have viewdetails in the system or user context.
+        $this->setUser($user9);
+        $user1context = context_user::instance($user1->id);
+        $this->assertFalse(has_capability('moodle/user:viewdetails', $systemcontext));
+        $this->assertFalse(has_capability('moodle/user:viewdetails', $user1context));
+
+        // Confirm that user_can_view_profile() returns true for $user1 when called without $course param. It should find $course1.
+        $this->assertTrue(user_can_view_profile($user1));
+
+        // Confirm this also works when restricting scope to just that course.
+        $this->assertTrue(user_can_view_profile($user1, $course4));
     }
 
     /**
@@ -670,26 +828,28 @@ class core_userliblib_testcase extends advanced_testcase {
      * calling user_get_user_details() function.
      */
     public function test_user_get_user_details_missing_fields() {
+        global $CFG;
+
         $this->resetAfterTest(true);
         $this->setAdminUser(); // We need capabilities to view the data.
         $user = self::getDataGenerator()->create_user([
-                                                          'auth'       => 'auth_something',
+                                                          'auth'       => 'email',
                                                           'confirmed'  => '0',
                                                           'idnumber'   => 'someidnumber',
-                                                          'lang'       => 'en_ar',
-                                                          'theme'      => 'mytheme',
-                                                          'timezone'   => '50',
+                                                          'lang'       => 'en',
+                                                          'theme'      => $CFG->theme,
+                                                          'timezone'   => '5',
                                                           'mailformat' => '0',
                                                       ]);
 
         // Fields that should get by default.
         $got = user_get_user_details($user);
-        self::assertSame('auth_something', $got['auth']);
+        self::assertSame('email', $got['auth']);
         self::assertSame('0', $got['confirmed']);
         self::assertSame('someidnumber', $got['idnumber']);
-        self::assertSame('en_ar', $got['lang']);
-        self::assertSame('mytheme', $got['theme']);
-        self::assertSame('50', $got['timezone']);
+        self::assertSame('en', $got['lang']);
+        self::assertSame($CFG->theme, $got['theme']);
+        self::assertSame('5', $got['timezone']);
         self::assertSame('0', $got['mailformat']);
     }
 }

@@ -49,32 +49,31 @@ function xmldb_folder_upgrade($oldversion) {
 
     $dbman = $DB->get_manager(); // Loads ddl manager and xmldb classes.
 
-    // Moodle v2.8.0 release upgrade line.
+    // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v2.9.0 release upgrade line.
+    // Automatically generated Moodle v3.7.0 release upgrade line.
     // Put any upgrade step following this.
 
-    // Moodle v3.0.0 release upgrade line.
+    // Automatically generated Moodle v3.8.0 release upgrade line.
     // Put any upgrade step following this.
 
+    // Automatically generated Moodle v3.9.0 release upgrade line.
+    // Put any upgrade step following this.
+    if ($oldversion < 2021052501) {
 
-    // Add showdownloadfolder option.
-    if ($oldversion < 2016020201) {
+        // Define field forcedownload to be added to folder.
         $table = new xmldb_table('folder');
-        $field = new xmldb_field('showdownloadfolder', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'showexpanded');
+        $field = new xmldb_field('forcedownload', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'showdownloadfolder');
+
+        // Conditionally launch add field forcedownload.
         if (!$dbman->field_exists($table, $field)) {
-            $dbman->add_field($table, $field, 'showdownloadfolder');
+            $dbman->add_field($table, $field);
         }
 
-        upgrade_mod_savepoint(true, 2016020201, 'folder');
+        // Folder savepoint reached.
+        upgrade_mod_savepoint(true, 2021052501, 'folder');
     }
-
-    // Moodle v3.1.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Automatically generated Moodle v3.2.0 release upgrade line.
-    // Put any upgrade step following this.
 
     return true;
 }

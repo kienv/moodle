@@ -24,9 +24,7 @@ Feature: Allow teachers to edit the default activity completion rules in a cours
       | activity | course | idnumber | name | intro | grade |
       | assign | C1 | a1 | Test assignment one | Submit something! | 300 |
     And I log in as "teacher1"
-    And I am on site homepage
-    And I follow "Course 1"
-    And I turn editing mode on
+    And I am on "Course 1" course homepage with editing mode on
     And I navigate to "Edit settings" in current page administration
     And I set the following fields to these values:
       | Enable completion tracking | Yes |
@@ -36,7 +34,7 @@ Feature: Allow teachers to edit the default activity completion rules in a cours
     And I click on "Assignments" "checkbox"
     And I click on "Edit" "button"
     And I should see "Completion tracking"
-    And I should see "The changes will affect the following 1 Activities/Resources"
+    And I should see "The changes will affect the following 1 activities or resources:"
     And I should see "Student must submit to this activity to complete it"
     And I set the following fields to these values:
       | completion | Show activity as complete when conditions are met|

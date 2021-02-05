@@ -27,9 +27,7 @@ Feature: Allow teachers to bulk edit activity completion rules in a course.
       | assign | C1 | a3 | Test assignment three | Submit something! | 150 |
       | assign | C1 | a4 | Test assignment four | Submit nothing! | 150 |
     And I log in as "teacher1"
-    And I am on site homepage
-    And I follow "Course 1"
-    And I turn editing mode on
+    And I am on "Course 1" course homepage with editing mode on
     And I navigate to "Edit settings" in current page administration
     And I set the following fields to these values:
       | Enable completion tracking | Yes |
@@ -40,7 +38,7 @@ Feature: Allow teachers to bulk edit activity completion rules in a course.
     And I click on "Test assignment two" "checkbox"
     And I click on "Edit" "button"
     And I should see "Completion tracking"
-    And I should see "The changes will affect the following 2 Activities/Resources"
+    And I should see "The changes will affect the following 2 activities or resources:"
     And I should see "Student must submit to this activity to complete it"
     And I select "Show activity as complete when conditions are met" from the "completion" singleselect
     And I click on "completionview" "checkbox"

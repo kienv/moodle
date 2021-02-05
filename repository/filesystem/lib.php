@@ -577,7 +577,9 @@ class repository_filesystem extends repository {
                     $filesize = filesize($filepath);
                 } else {
                     // Copy file into moodle filepool (used to generate an image thumbnail).
-                    list($contenthash, $filesize, $newfile) = $fs->add_file_to_pool($filepath);
+                    $file->set_timemodified(filemtime($filepath));
+                    $file->set_synchronised_content_from_file($filepath);
+                    return true;
                 }
             } else {
                 // Update only file size so file will NOT be copied into moodle filepool.
@@ -845,7 +847,8 @@ function repository_filesystem_pluginfile($course, $cm, $context, $filearea, $ar
     // Find stored or generated thumbnail.
     if (!($file = $repo->get_thumbnail($filepath, $filearea))) {
         // Generation failed, redirect to default icon for file extension.
-        redirect($OUTPUT->image_url(file_extension_icon($file, 90)));
+        // Do not use redirect() here because is not compatible with webservice/pluginfile.php.
+        header('Location: ' . $OUTPUT->image_url(file_extension_icon($file, 90)));
     }
     // The thumbnails should not be changing much, but maybe the default lifetime is too long.
     $lifetime = $CFG->filelifetime;
@@ -853,37 +856,4 @@ function repository_filesystem_pluginfile($course, $cm, $context, $filearea, $ar
         $lifetime = 60*10;
     }
     send_stored_file($file, $lifetime, 0, $forcedownload, $options);
-}
-
-/**
- * Cron callback for repository_filesystem. Deletes the thumbnails for deleted or changed files.
- */
-function repository_filesystem_cron() {
-    $fs = get_file_storage();
-    // Find all generated thumbnails and group them in array by itemid (itemid == repository instance id).
-    $allfiles = array_merge(
-            $fs->get_area_files(SYSCONTEXTID, 'repository_filesystem', 'thumb'),
-            $fs->get_area_files(SYSCONTEXTID, 'repository_filesystem', 'icon')
-    );
-    $filesbyitem = array();
-    foreach ($allfiles as $file) {
-        if (!isset($filesbyitem[$file->get_itemid()])) {
-            $filesbyitem[$file->get_itemid()] = array();
-        }
-        $filesbyitem[$file->get_itemid()][] = $file;
-    }
-    // Find all instances of repository_filesystem.
-    $instances = repository::get_instances(array('type' => 'filesystem'));
-    // Loop through all itemids of generated thumbnails.
-    foreach ($filesbyitem as $itemid => $files) {
-        if (!isset($instances[$itemid]) || !($instances[$itemid] instanceof repository_filesystem)) {
-            // Instance was deleted.
-            $fs->delete_area_files(SYSCONTEXTID, 'repository_filesystem', 'thumb', $itemid);
-            $fs->delete_area_files(SYSCONTEXTID, 'repository_filesystem', 'icon', $itemid);
-            mtrace(" instance $itemid does not exist: deleted all thumbnails");
-        } else {
-            // Instance has some generated thumbnails, check that they are not outdated.
-            $instances[$itemid]->remove_obsolete_thumbnails($files);
-        }
-    }
 }

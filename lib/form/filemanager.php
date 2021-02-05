@@ -296,9 +296,15 @@ class MoodleQuickForm_filemanager extends HTML_QuickForm_element implements temp
         $output = $PAGE->get_renderer('core', 'files');
         $html .= $output->render($fm);
 
-        $html .= html_writer::empty_tag('input', array('value' => $draftitemid, 'name' => $elname, 'type' => 'hidden'));
-        // label element needs 'for' attribute work
-        $html .= html_writer::empty_tag('input', array('value' => '', 'id' => 'id_'.$elname, 'type' => 'hidden'));
+        $html .= html_writer::empty_tag('input', array('value' => $draftitemid, 'name' => $elname, 'type' => 'hidden', 'id' => $id));
+
+        if (!empty($options->accepted_types) && $options->accepted_types != '*') {
+            $html .= html_writer::tag('p', get_string('filesofthesetypes', 'form'));
+            $util = new \core_form\filetypes_util();
+            $filetypes = $options->accepted_types;
+            $filetypedescriptions = $util->describe_file_types($filetypes);
+            $html .= $OUTPUT->render_from_template('core_form/filetypes-descriptions', $filetypedescriptions);
+        }
 
         return $html;
     }
@@ -307,6 +313,51 @@ class MoodleQuickForm_filemanager extends HTML_QuickForm_element implements temp
         $context = $this->export_for_template_base($output);
         $context['html'] = $this->toHtml();
         return $context;
+    }
+
+    /**
+     * Check that all files have the allowed type.
+     *
+     * @param int $value Draft item id with the uploaded files.
+     * @return string|null Validation error message or null.
+     */
+    public function validateSubmitValue($value) {
+
+        if (empty($value)) {
+            return;
+        }
+
+        $filetypesutil = new \core_form\filetypes_util();
+        $allowlist = $filetypesutil->normalize_file_types($this->_options['accepted_types']);
+
+        if (empty($allowlist) || $allowlist === ['*']) {
+            // Any file type is allowed, nothing to check here.
+            return;
+        }
+
+        $draftfiles = file_get_all_files_in_draftarea($value);
+        $wrongfiles = array();
+
+        if (empty($draftfiles)) {
+            // No file uploaded, nothing to check here.
+            return;
+        }
+
+        foreach ($draftfiles as $file) {
+            if (!$filetypesutil->is_allowed_file_type($file->filename, $allowlist)) {
+                $wrongfiles[] = $file->filename;
+            }
+        }
+
+        if ($wrongfiles) {
+            $a = array(
+                'allowlist' => implode(', ', $allowlist),
+                'wrongfiles' => implode(', ', $wrongfiles),
+            );
+            return get_string('err_wrongfileextension', 'core_form', $a);
+        }
+
+        return;
     }
 }
 
@@ -345,6 +396,7 @@ class form_filemanager implements renderable {
     public function __construct(stdClass $options) {
         global $CFG, $USER, $PAGE;
         require_once($CFG->dirroot. '/repository/lib.php');
+        require_once($CFG->libdir . '/licenselib.php');
         $defaults = array(
             'maxbytes'=>-1,
             'areamaxbytes' => FILE_AREA_MAX_BYTES_UNLIMITED,
@@ -358,15 +410,9 @@ class form_filemanager implements renderable {
             'author'=>fullname($USER),
             'licenses'=>array()
             );
-        if (!empty($CFG->licenses)) {
-            $array = explode(',', $CFG->licenses);
-            foreach ($array as $license) {
-                $l = new stdClass();
-                $l->shortname = $license;
-                $l->fullname = get_string($license, 'license');
-                $defaults['licenses'][] = $l;
-            }
-        }
+
+        $defaults['licenses'] = license_manager::get_licenses();
+
         if (!empty($CFG->sitedefaultlicense)) {
             $defaults['defaultlicense'] = $CFG->sitedefaultlicense;
         }
@@ -404,6 +450,10 @@ class form_filemanager implements renderable {
             $maxbytes = $this->options->maxbytes;
         }
         $this->options->maxbytes = get_user_max_upload_file_size($context, $CFG->maxbytes, $coursebytes, $maxbytes);
+
+        $this->options->userprefs = array();
+        $this->options->userprefs['recentviewmode'] = get_user_preferences('filemanager_recentviewmode', '');
+        user_preference_allow_ajax_update('filemanager_recentviewmode', PARAM_INT);
 
         // building file picker options
         $params = new stdClass();

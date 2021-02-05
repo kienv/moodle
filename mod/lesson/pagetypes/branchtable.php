@@ -176,6 +176,17 @@ class lesson_page_type_branchtable extends lesson_page {
             $retries = 0;
         }
 
+        // First record this page in lesson_branch. This record may be needed by lesson_unseen_branch_jump.
+        $branch = new stdClass;
+        $branch->lessonid = $this->lesson->id;
+        $branch->userid = $USER->id;
+        $branch->pageid = $this->properties->id;
+        $branch->retry = $retries;
+        $branch->flag = $branchflag;
+        $branch->timeseen = time();
+        $branch->nextpageid = 0;    // Next page id will be set later.
+        $branch->id = $DB->insert_record("lesson_branch", $branch);
+
         //  this is called when jumping to random from a branch table
         $context = context_module::instance($PAGE->cm->id);
         if($newpageid == LESSON_UNSEENBRANCHPAGE) {
@@ -201,16 +212,9 @@ class lesson_page_type_branchtable extends lesson_page {
             $newpageid = lesson_unseen_branch_jump($this->lesson, $USER->id);
         }
 
-        // Record this page in lesson_branch.
-        $branch = new stdClass;
-        $branch->lessonid = $this->lesson->id;
-        $branch->userid = $USER->id;
-        $branch->pageid = $this->properties->id;
-        $branch->retry = $retries;
-        $branch->flag = $branchflag;
-        $branch->timeseen = time();
+        // Update record to set nextpageid.
         $branch->nextpageid = $newpageid;
-        $DB->insert_record("lesson_branch", $branch);
+        $DB->update_record("lesson_branch", $branch);
 
         // This will force to redirect to the newpageid.
         $result->inmediatejump = true;
@@ -230,12 +234,12 @@ class lesson_page_type_branchtable extends lesson_page {
                 continue;
             }
             $cells = array();
-            $cells[] = "<span class=\"label\">".get_string("branch", "lesson")." $i<span>: ";
+            $cells[] = '<label>' . get_string('branch', 'lesson') . ' ' . $i . '</label>: ';
             $cells[] = format_text($answer->answer, $answer->answerformat, $options);
             $table->data[] = new html_table_row($cells);
 
             $cells = array();
-            $cells[] = "<span class=\"label\">".get_string("jump", "lesson")." $i<span>: ";
+            $cells[] = '<label>' . get_string('jump', 'lesson') . ' ' . $i . '</label>: ';
             $cells[] = $this->get_jump_name($answer->jumpto);
             $table->data[] = new html_table_row($cells);
 
@@ -311,7 +315,7 @@ class lesson_add_page_form_branchtable extends lesson_add_page_form_base {
     protected $standard = false;
 
     public function custom_definition() {
-        global $PAGE;
+        global $PAGE, $CFG;
 
         $mform = $this->_form;
         $lesson = $this->_customdata['lesson'];
@@ -320,7 +324,11 @@ class lesson_add_page_form_branchtable extends lesson_add_page_form_base {
 
         $jumptooptions = lesson_page_type_branchtable::get_jumptooptions($firstpage, $lesson);
 
-        $mform->setDefault('qtypeheading', get_string('addabranchtable', 'lesson'));
+        if ($this->_customdata['edit']) {
+            $mform->setDefault('qtypeheading', get_string('editbranchtable', 'lesson'));
+        } else {
+            $mform->setDefault('qtypeheading', get_string('addabranchtable', 'lesson'));
+        }
 
         $mform->addElement('hidden', 'firstpage');
         $mform->setType('firstpage', PARAM_BOOL);
@@ -330,8 +338,12 @@ class lesson_add_page_form_branchtable extends lesson_add_page_form_base {
         $mform->setType('qtype', PARAM_INT);
 
         $mform->addElement('text', 'title', get_string("pagetitle", "lesson"), array('size'=>70));
-        $mform->setType('title', PARAM_TEXT);
         $mform->addRule('title', null, 'required', null, 'server');
+        if (!empty($CFG->formatstringstriptags)) {
+            $mform->setType('title', PARAM_TEXT);
+        } else {
+            $mform->setType('title', PARAM_CLEANHTML);
+        }
 
         $this->editoroptions = array('noclean'=>true, 'maxfiles'=>EDITOR_UNLIMITED_FILES, 'maxbytes'=>$PAGE->course->maxbytes);
         $mform->addElement('editor', 'contents_editor', get_string("pagecontents", "lesson"), null, $this->editoroptions);

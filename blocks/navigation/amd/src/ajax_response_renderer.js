@@ -22,7 +22,19 @@
  * @copyright  2015 John Okely <john@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-define(['jquery'], function($) {
+define([
+    'jquery',
+    'core/templates',
+    'core/notification',
+    'core/url',
+    'core/aria',
+], function(
+    $,
+    Templates,
+    Notification,
+    Url,
+    Aria
+) {
 
     // Mappings for the different types of nodes coming from the navigation.
     // Copied from lib/navigationlib.php navigation_node constants.
@@ -43,7 +55,7 @@ define(['jquery'], function($) {
     function buildDOM(rootElement, nodes) {
         var ul = $('<ul></ul>');
         ul.attr('role', 'group');
-        ul.attr('aria-hidden', true);
+        Aria.hide(ul);
 
         $.each(nodes, function(index, node) {
             if (typeof node !== 'object') {
@@ -75,28 +87,12 @@ define(['jquery'], function($) {
                 p.addClass('branch');
             }
 
-            if (node.icon && (!isBranch || node.type === NODETYPE.ACTIVITY || node.type === NODETYPE.RESOURCE)) {
-                li.addClass('item_with_icon');
-                p.addClass('hasicon');
-
-                icon = $('<img/>');
-                icon.attr('alt', node.icon.alt);
-                icon.attr('title', node.icon.title);
-                icon.attr('src', M.util.image_url(node.icon.pix, node.icon.component));
-                $.each(node.icon.classes, function(index, className) {
-                    icon.addClass(className);
-                });
-            }
-
+            var eleToAddIcon = null;
             if (node.link) {
                 var link = $('<a title="' + node.title + '" href="' + node.link + '"></a>');
 
-                if (icon) {
-                    link.append(icon);
-                    link.append('<span class="item-content-wrap">' + node.name + '</span>');
-                } else {
-                    link.append(node.name);
-                }
+                eleToAddIcon = link;
+                link.append('<span class="item-content-wrap">' + node.name + '</span>');
 
                 if (node.hidden) {
                     link.addClass('dimmed');
@@ -106,18 +102,39 @@ define(['jquery'], function($) {
             } else {
                 var span = $('<span></span>');
 
-                if (icon) {
-                    span.append(icon);
-                    span.append('<span class="item-content-wrap">' + node.name + '</span>');
-                } else {
-                    span.append(node.name);
-                }
+                eleToAddIcon = span;
+                span.append('<span class="item-content-wrap">' + node.name + '</span>');
 
                 if (node.hidden) {
                     span.addClass('dimmed');
                 }
 
                 p.append(span);
+            }
+
+            if (node.icon && (!isBranch || node.type === NODETYPE.ACTIVITY || node.type === NODETYPE.RESOURCE)) {
+                li.addClass('item_with_icon');
+                p.addClass('hasicon');
+
+                if (node.type === NODETYPE.ACTIVITY || node.type === NODETYPE.RESOURCE) {
+                    icon = $('<img/>');
+                    icon.attr('alt', node.icon.alt);
+                    icon.attr('title', node.icon.title);
+                    icon.attr('src', Url.imageUrl(node.icon.pix, node.icon.component));
+                    $.each(node.icon.classes, function(index, className) {
+                        icon.addClass(className);
+                    });
+                    eleToAddIcon.prepend(icon);
+                } else {
+                    if (node.icon.component == 'moodle') {
+                        node.icon.component = 'core';
+                    }
+                    Templates.renderPix(node.icon.pix, node.icon.component, node.icon.title).then(function(html) {
+                        // Prepend.
+                        eleToAddIcon.prepend(html);
+                        return;
+                    }).catch(Notification.exception);
+                }
             }
 
             li.append(p);
@@ -148,7 +165,7 @@ define(['jquery'], function($) {
                 var group = element.find('#' + item.attr('aria-owns'));
 
                 item.attr('aria-expanded', true);
-                group.attr('aria-hidden', false);
+                Aria.unhide(group);
             } else {
                 if (element.parent().hasClass('contains_branch')) {
                     element.parent().removeClass('contains_branch');
